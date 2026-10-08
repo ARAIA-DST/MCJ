@@ -1,0 +1,29 @@
+{
+  "name": "trw-route-to-preference",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.*",
+    "check": "node scripts/check.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "audit:local": "node scripts/lighthouse.mjs"
+  },
+  "dependencies": {
+    "chart.js": "4.5.1",
+    "idb": "8.0.3",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.56.1",
+    "lighthouse": "^12.8.2",
+    "vite": "7.1.12"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

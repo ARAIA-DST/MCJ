@@ -1,0 +1,39 @@
+function spreadsheet_(){var p=PropertiesService.getScriptProperties(),id=p.getProperty('SPREADSHEET_ID');assert_(id,'SETUP_REQUIRED','Jalankan setup() terlebih dahulu.');return SpreadsheetApp.openById(id);}
+function encodeCell_(v){if(v===undefined||v===null)return '';if(typeof v==='object')return JSON.stringify(v);if(typeof v==='string'&&/^\s*[=+\-@']/.test(v))return "'"+v;return v;}
+function decodeCell_(v,key,table){if(v instanceof Date)return v.toISOString();if(typeof v==='string'&&v[0]==="'")v=v.slice(1);if(table==='Config'&&key==='value')return String(v);if(JSON_COLUMNS_.indexOf(key)!==-1){if(v==='')return key==='audience'||key==='variables'||key==='detail'?{}:[];try{return JSON.parse(v);}catch(e){fail_('SCHEMA_ERROR','JSON rusak pada '+key);}}if(BOOL_COLUMNS_.indexOf(key)!==-1)return v===true||v==='true';if(NUMBER_COLUMNS_.indexOf(key)!==-1)return v===''?'':Number(v);return v;}
+function readTable_(name,useCache){assert_(COLUMNS_[name],'SCHEMA_ERROR','Tabel tidak dikenal.');var cache=CacheService.getScriptCache(),key='table:'+name;
+  if(useCache&&['Outlets','Workshops','Config','Training'].indexOf(name)!==-1){var hit=cache.get(key);if(hit)return JSON.parse(hit);}
+  var sheet=spreadsheet_().getSheetByName(name);assert_(sheet,'SETUP_REQUIRED','Tabel '+name+' belum tersedia.');var cells=sheet.getDataRange().getValues(),headers=BASE_COLUMNS_.concat(COLUMNS_[name]);
+  assert_(JSON.stringify(cells[0])===JSON.stringify(headers),'SCHEMA_ERROR','Header '+name+' berubah. Kembalikan urutan header sesuai SCHEMA.md.');
+  var rows=cells.slice(1).filter(function(r){return !!r[0];}).map(function(r){var o={};headers.forEach(function(h,i){o[h]=decodeCell_(r[i],h,name);});return o;});
+  if(useCache&&['Outlets','Workshops','Config','Training'].indexOf(name)!==-1){var json=JSON.stringify(rows);if(json.length<85000)cache.put(key,json,120);}return rows;
+}
+function config_(ctx){var conf=JSON.parse(JSON.stringify(DEFAULT_CONFIG_));var rows=ctx?ctx.table('Config'):readTable_('Config',true);rows.forEach(function(r){try{conf[r.key]=JSON.parse(r.value);}catch(e){conf[r.key]=r.value;}});return conf;}
+function entity_(ctx,table,id){var r=ctx.table(table).find(function(x){return x.id===id;});assert_(r,'NOT_FOUND','Data tidak ditemukan.');return r;}
+function makeContext_(actor,requestId){return {actor:actor,requestId:requestId,rows:{},changes:{},removed:{},
+  table:function(t){if(!this.rows[t])this.rows[t]=readTable_(t,false);return this.rows[t];},
+  key:function(t,ref){return digest_(this.requestId+'|'+t+'|'+ref).slice(0,32);},
+  put:function(t,row){var copy=JSON.parse(JSON.stringify(row));copy.updated_at=now_();var rows=this.table(t),index=rows.findIndex(function(r){return r.id===copy.id;});if(index<0)rows.push(copy);else rows[index]=copy;if(!this.changes[t])this.changes[t]={};this.changes[t][copy.id]=copy;return copy;},
+  add:function(t,data,ref){var stamp=now_(),id=this.key(t,ref||String((this.rows[t]||[]).length));return this.put(t,Object.assign({id:id,created_at:stamp,created_by:this.actor.id,updated_at:stamp},data));},
+  erase:function(t,ids){this.table(t);this.rows[t]=this.rows[t].filter(function(r){return ids.indexOf(r.id)===-1;});this.removed[t]=(this.removed[t]||[]).concat(ids);},
+  ops:function(){return {changes:this.changes,removed:this.removed};}
+};}
+function audit_(ctx,action,table,id,detail){ctx.add('AuditLog',{actor_id:ctx.actor.id,action:action,entity:table,entity_id:id,detail:detail||{}},action+':'+id+':'+Object.keys(ctx.changes.AuditLog||{}).length);}
+function applyOps_(ops){var names=Array.from(new Set(Object.keys(ops.changes).concat(Object.keys(ops.removed))));names.forEach(function(t){var sheet=spreadsheet_().getSheetByName(t),headers=BASE_COLUMNS_.concat(COLUMNS_[t]),existing=readTable_(t,false),changed=ops.changes[t]||{},removed=ops.removed[t]||[];
+    if(removed.length){var all=existing.filter(function(r){return removed.indexOf(r.id)===-1;});Object.keys(changed).forEach(function(id){var i=all.findIndex(function(r){return r.id===id;});if(i<0)all.push(changed[id]);else all[i]=changed[id];});if(sheet.getLastRow()>1)sheet.getRange(2,1,sheet.getLastRow()-1,headers.length).clearContent();if(all.length+1>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),all.length+1-sheet.getMaxRows());if(all.length)sheet.getRange(2,1,all.length,headers.length).setValues(all.map(function(r){return headers.map(function(h){return encodeCell_(r[h]);});}));
+    }else{var index={};existing.forEach(function(r,i){index[r.id]=i+2;});var updates=[],added=[];Object.keys(changed).forEach(function(id){var values=headers.map(function(h){return encodeCell_(changed[id][h]);});values.forEach(function(v){assert_(typeof v!=='string'||v.length<45000,'TOO_LARGE','Isi sel melebihi batas aman.');});if(index[id])updates.push({row:index[id],values:values});else added.push(values);});updates.sort(function(a,b){return a.row-b.row;});var groups=[];updates.forEach(function(u){var last=groups[groups.length-1];if(last&&last.row+last.values.length===u.row)last.values.push(u.values);else groups.push({row:u.row,values:[u.values]});});groups.forEach(function(g){sheet.getRange(g.row,1,g.values.length,headers.length).setValues(g.values);});if(added.length){var lastRow=sheet.getLastRow();if(lastRow+added.length>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),lastRow+added.length-sheet.getMaxRows());sheet.getRange(lastRow+1,1,added.length,headers.length).setValues(added);};}
+    CacheService.getScriptCache().remove('table:'+t);
+  });SpreadsheetApp.flush();}
+function writeRequest_(r){var ops={changes:{Requests:{}},removed:{}};ops.changes.Requests[r.id]=r;applyOps_(ops);}
+function journalFolder_(){return folderByName_(rootFolder_(),'_transactions');}
+function recoverRequests_(){readTable_('Requests',false).filter(function(r){return r.status==='prepared';}).forEach(function(r){var file=DriveApp.getFileById(r.journal_file_id),record=JSON.parse(file.getBlob().getDataAsString());applyOps_(record.ops);r.status='done';r.response_json=JSON.stringify(record.result);r.updated_at=now_();writeRequest_(r);file.setTrashed(true);});}
+function transaction_(actor,request,handler){var lock=LockService.getScriptLock();assert_(lock.tryLock(15000),'BUSY','Server sibuk. Coba sinkronisasi ulang.');try{
+  recoverRequests_();var rid=digest_(actor.id+'|'+request.requestId),fingerprint=digest_(JSON.stringify({action:request.action,payload:request.payload})),old=readTable_('Requests',false).find(function(r){return r.id===rid;});
+  if(old){assert_(old.fingerprint===fingerprint,'IDEMPOTENCY_CONFLICT','ID permintaan dipakai untuk isi berbeda.');return JSON.parse(old.response_json);}
+  var ctx=makeContext_(actor,request.requestId),result;try{result=handler(ctx);}catch(error){if(!error.code||!ctx.changes.RateLimits)throw error;ctx.changes={RateLimits:ctx.changes.RateLimits};ctx.removed={};result={_error:{code:error.code,message:error.message}};}var file=journalFolder_().createFile(rid+'.json',JSON.stringify({ops:ctx.ops(),result:result}),MimeType.PLAIN_TEXT),stamp=now_();
+  var row={id:rid,created_at:stamp,created_by:actor.id,updated_at:stamp,actor_id:actor.id,action:request.action,fingerprint:fingerprint,status:'prepared',journal_file_id:file.getId(),response_json:''};
+  writeRequest_(row);applyOps_(ctx.ops());row.status='done';row.response_json=JSON.stringify(result);row.updated_at=now_();writeRequest_(row);file.setTrashed(true);return result;
+}finally{lock.releaseLock();}}
+function readContext_(actor){return makeContext_(actor,'read');}
+function rootFolder_(){var id=PropertiesService.getScriptProperties().getProperty('DRIVE_ROOT_ID');assert_(id,'SETUP_REQUIRED','Folder Drive belum disiapkan.');return DriveApp.getFolderById(id);}
+function folderByName_(parent,name){var it=parent.getFoldersByName(name);return it.hasNext()?it.next():parent.createFolder(name);}

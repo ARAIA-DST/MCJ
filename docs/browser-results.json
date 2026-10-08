@@ -1,0 +1,23 @@
+{
+  "checks": [
+    {
+      "page": "today",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "page": "today",
+      "width": 360,
+      "violations": []
+    },
+    {
+      "offlineFlow": "FM: capture offline → reload → reconnect → exactly one visit, two JPEG photos, pending review",
+      "passed": true
+    },
+    {
+      "offlineFlow": "SPG: offline visit plus consent survey → exactly one SPG visit, one pending survey",
+      "passed": true
+    }
+  ],
+  "failures": []
+}
