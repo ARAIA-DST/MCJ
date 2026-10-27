@@ -117,7 +117,7 @@
     const query = new URLSearchParams(params).toString();
     return base + (base.indexOf('?') >= 0 ? '&' : '?') + query;
   }
-  function apiGet(action, params = {}) {
+  function apiGet(action, params = {}, options = {}) {
     return new Promise((resolve, reject) => {
       if (!hasAPI()) { reject(new Error('URL Apps Script belum dipasang. Isi frontend/config.js dengan URL /exec hasil deployment.')); return; }
       const callbackName = '__trw_cb_' + uid('cb').replace(/[^A-Za-z0-9_]/g, '');
@@ -128,27 +128,47 @@
         else finish(resolve, data || {});
       };
       script.onerror = () => finish(reject, new Error('API belum dapat dijangkau. Periksa URL deployment dan koneksi internet.'));
-      const timer = setTimeout(() => finish(reject, new Error('API terlalu lama merespons. Coba lagi.')), 25000);
+      const timer = setTimeout(() => finish(reject, new Error('API terlalu lama merespons. Coba lagi.')), Number(options.timeout) || 25000);
       const query = Object.assign({}, params, { action: action, token: state.token, callback: callbackName, _: Date.now() });
       script.src = endpointWith(query); script.async = true; document.head.appendChild(script);
     });
+  }
+  function makeBridgeProof() {
+    if (!window.crypto || !window.crypto.getRandomValues) throw new Error('Browser tidak menyediakan generator aman. Buka aplikasi di Chrome/Safari terbaru melalui HTTPS.');
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
   function bridgePost(payload) {
     return new Promise((resolve, reject) => {
       if (!hasAPI()) { const err = new Error('URL Apps Script belum dipasang. Isi frontend/config.js dengan URL /exec hasil deployment.'); err.transport = false; reject(err); return; }
       const rid = String(payload.request_id || uid('REQ'));
+      let proof;
+      try { proof = makeBridgeProof(); } catch (error) { error.transport = false; reject(error); return; }
       const iframe = document.createElement('iframe'); iframe.name = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, ''); iframe.setAttribute('aria-hidden', 'true'); iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-10000px;top:-10000px;border:0';
-      const form = document.createElement('form'); form.method = 'POST'; form.target = iframe.name; form.action = endpointWith({ bridge: '1', rid: rid }); form.style.display = 'none'; form.acceptCharset = 'UTF-8';
+      const form = document.createElement('form'); form.method = 'POST'; form.target = iframe.name; form.action = endpointWith({ bridge: '1', rid: rid, proof: proof }); form.style.display = 'none'; form.acceptCharset = 'UTF-8';
       const input = document.createElement('input'); input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(payload); form.appendChild(input);
-      let complete = false;
-      const cleanup = () => { clearTimeout(timer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
-      const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Respons server tidak diterima. Kiriman aman untuk dicoba ulang.'); err.transport = true; reject(err); }, 35000);
-      const waiter = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
+      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 500;
+      const cleanup = () => { clearTimeout(timer); clearTimeout(pollTimer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
+      const finish = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
+      const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Belum ada konfirmasi dari Apps Script. Buka Apps Script → Executions untuk memeriksa kiriman sebelum mencoba ulang.'); err.transport = true; reject(err); }, 35000);
+      const waiter = (data) => finish(data);
       waiter.source = iframe.contentWindow;
       postWaiters.set(rid, waiter);
+      async function pollStatus() {
+        if (complete || pollInFlight) return;
+        pollInFlight = true;
+        try {
+          const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 7000 });
+          if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) { finish(status.result); return; }
+        } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
+        finally { pollInFlight = false; }
+        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.6), 4000); }
+      }
       document.body.appendChild(iframe); document.body.appendChild(form);
       waiter.source = iframe.contentWindow;
-      try { form.submit(); } catch (error) { if (!complete) { complete = true; cleanup(); error.transport = true; reject(error); } }
+      try { form.submit(); pollTimer = setTimeout(pollStatus, 350); }
+      catch (error) { if (!complete) { complete = true; cleanup(); error.transport = true; reject(error); } }
     });
   }
   window.addEventListener('message', (event) => {
