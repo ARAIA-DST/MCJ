@@ -760,7 +760,17 @@
     const button = event.target.closest('[data-act]'); if (!button) return;
     const act = button.dataset.act;
     try {
-      if (act === 'nav') { state.page = button.dataset.page || 'home'; if (state.page === 'input') state.inputType=''; await loadCurrentPageData(); render(); }
+      if (act === 'nav') {
+        state.page = button.dataset.page || 'home';
+        if (state.page === 'input') state.inputType = '';
+        // Navigation must never wait for the network. Paint the requested page first,
+        // then refresh only the data that page needs in the background.
+        render();
+        loadCurrentPageData().then(() => render()).catch((error) => {
+          if (navigator.onLine) toast(error.message || 'Data tidak berhasil dimuat.', 'bad');
+          render();
+        });
+      }
       else if (act === 'refresh') await refreshAll(true);
       else if (act === 'refresh-reports') { await loadReports(); render(); toast('Laporan diperbarui.','ok'); }
       else if (act === 'refresh-users') { await loadUsers(); render(); }
@@ -774,7 +784,13 @@
         try { await apiPost('logout',{}, {allowQueue:false}); } catch (_) {}
         signOutLocal(); toast('Logout aplikasi berhasil.','ok');
       }
-      else if (act === 'search-outlets') { state.outletQuery = $('#outlet-search') ? $('#outlet-search').value : ''; if (navigator.onLine) await loadOutlets(); render(); }
+      else if (act === 'search-outlets') {
+        state.outletQuery = $('#outlet-search') ? $('#outlet-search').value : '';
+        render();
+        if (navigator.onLine) {
+          loadOutlets().then(() => render()).catch((error) => { toast(error.message || 'Outlet gagal dimuat.', 'bad'); render(); });
+        }
+      }
       else if (act === 'outlet-filter') { state.outletFilter = button.dataset.filter || 'all'; render(); }
       else if (act === 'choose-outlet') selectOutlet(button.dataset.id);
       else if (act === 'clear-signature') { state.signatureData=''; state.signatureDrawn=false; state.signatureCapturedAt=''; const canvas=$('#owner-signature'); if(canvas){const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);} const status=$('#signature-status'); if(status) status.textContent='Belum ditandatangani.'; }
