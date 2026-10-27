@@ -658,7 +658,14 @@
     if (!result || !result.token || !result.user) throw new Error('Respons login tidak valid.');
     state.token = result.token; state.user = result.user; state.page = 'home';
     localStorage.setItem(STORE.token, state.token); localStorage.setItem(STORE.user, JSON.stringify(state.user));
-    await updateQueueState(); await refreshAll(false); toast('Login berhasil. Selamat bekerja.', 'ok');
+    // Fast first paint: do not block the login screen on dashboard/report requests.
+    toast('Login berhasil. Memuat data di latar belakang…', 'ok');
+    render();
+    updateQueueState().catch(() => {});
+    refreshAll(false).catch((error) => {
+      console.warn('Background refresh failed:', error);
+      toast('Anda sudah login. Sebagian data belum termuat; coba Muat Ulang Data.', 'bad');
+    });
   }
 
   function downloadCSV(filename, headers, rows) {
