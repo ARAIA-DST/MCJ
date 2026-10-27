@@ -315,15 +315,29 @@
   function syncBanner() {
     return '<div id="sync-banner" class="sync-banner ' + (state.queueCount ? '' : 'hidden') + '"><div><strong id="sync-count">' + state.queueCount + ' kiriman menunggu sinkronisasi</strong><span class="muted">Data tetap tersimpan di perangkat hingga terkirim.</span></div><button class="btn btn-small btn-yellow" data-act="sync" ' + (state.online ? '' : 'disabled') + '>' + (state.syncing ? 'Menyinkronkan…' : 'Sinkronkan') + '</button></div>';
   }
+  function navIcon(page) {
+    const icons = {
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7"/><path d="M5 9.5V21h14V9.5M9 21v-7h6v7"/></svg>',
+      outlets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18l-1.4-6H4.4L3 10Z"/><path d="M5 10v10h14V10M9 20v-6h6v6"/><path d="M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>',
+      input: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h-3a2 2 0 0 0-2 2v14h18V6a2 2 0 0 0-2-2h-3"/><rect x="8" y="2" width="8" height="5" rx="1.5"/><path d="M8 12h8M8 16h5"/></svg>',
+      reports: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+      more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>'
+    };
+    return icons[page] || icons.more;
+  }
   function navButton(key, label, page) {
     const active = state.page === page || (page === 'more' && ['more','users','beatplan','createOutlet'].includes(state.page));
-    return '<button class="nav-btn ' + (active ? 'active' : '') + '" data-act="nav" data-page="' + page + '"><span class="nav-dot"></span><span>' + esc(label) + '</span></button>';
+    return '<button class="nav-btn ' + (active ? 'active' : '') + '" data-act="nav" data-page="' + page + '" aria-current="' + (active ? 'page' : 'false') + '"><span class="nav-icon" aria-hidden="true">' + navIcon(page) + '</span><span class="nav-label">' + esc(label) + '</span></button>';
   }
   function loginPage() {
     return '<div class="login-wrap"><div class="login-card"><div class="brand-line"><div class="brand-square">TRW</div><div><div class="brand-title">Direct-to-Retailer</div><div class="eyebrow">Field Execution System</div></div></div><h1>Selamat datang.</h1><p class="subhead">Masuk untuk mencatat aktivitas lapangan, evidence, dan laporan TRW.</p><form data-form="login" autocomplete="on">' + field('username','Username','text',{required:true,placeholder:'Masukkan username',full:true}) + field('password','Password','password',{required:true,placeholder:'Masukkan password',full:true}) + '<button class="btn btn-primary btn-block" type="submit">Masuk ke aplikasi</button></form><div class="divider"></div><div class="small muted">Gunakan akun yang diberikan Admin. Login tidak sama dengan Check In kehadiran.</div><div class="footer-note">TRW Direct-to-Retailer · ARAIA Group</div></div></div>';
   }
   function shell(content) {
-    return '<header class="topbar"><div class="topbar-inner"><div class="brand-mini"><div class="brand-square">TRW</div><div>TRW FIELD<small>DIRECT-TO-RETAILER</small></div></div><div class="top-actions"><span id="network-badge" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span><span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '">' + state.queueCount + '</span><button class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Refresh</button></div></div></header>' + content + '<nav class="bottom-nav" aria-label="Navigasi utama">' + navButton('home','Beranda','home') + navButton('outlets','Outlet','outlets') + navButton('input','Input','input') + navButton('reports','Laporan','reports') + navButton('more','Menu','more') + '</nav>';
+    const isClient = state.user && state.user.role === 'CLIENT';
+    const navigation = isClient
+      ? navButton('home','Beranda','home') + navButton('outlets','Outlet','outlets') + navButton('reports','Laporan','reports') + navButton('more','Menu','more')
+      : navButton('home','Beranda','home') + navButton('outlets','Outlet','outlets') + navButton('input','Input','input') + navButton('reports','Laporan','reports') + navButton('more','Menu','more');
+    return '<header class="topbar ' + (isClient ? 'client-topbar' : '') + '"><div class="topbar-inner"><div class="brand-mini"><div class="brand-square">TRW</div><div>TRW FIELD<small>DIRECT-TO-RETAILER</small></div></div><div class="top-actions"><span id="network-badge" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span><span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '">' + state.queueCount + '</span><button class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Refresh</button></div></div></header>' + content + '<nav class="bottom-nav ' + (isClient ? 'client-nav' : '') + '" aria-label="Navigasi utama">' + navigation + '</nav>';
   }
   function render() {
     updateQueueState();
@@ -339,12 +353,14 @@
       case 'more': page = morePage(); break;
       default: page = homePage();
     }
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap">' + page + '<div class="footer-note">TRW Field · Versi ' + esc(C.BUILD || '1.0.0') + '<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.4.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
   }
 
   function homePage() {
+    if (state.user && state.user.role === 'CLIENT') return clientHomePage();
     const m = (state.dashboard && state.dashboard.metrics) || {};
     const targets = (state.dashboard && state.dashboard.targets) || { prospects:250, uniqueOutlets:180, fmVisits:360, spgDays:72, interactions:1080 };
     const isClient = state.user.role === 'CLIENT';
@@ -360,6 +376,45 @@
     const kpis = '<div class="card"><div class="card-head"><div><h2>Progress program</h2><p class="muted small">Target kerja terpisah sesuai SOW dan revised execution plan.</p></div><span class="tag yellow">PROGRAM KPI</span></div><div class="grid grid-3">' + metricCard('Prospect',m.prospectCount,targets.prospects,'Target database awal') + metricCard('Outlet qualified',m.qualifiedUnique,targets.uniqueOutlets,'Outlet lolos qualification') + metricCard('FM visits',m.fmVisits,targets.fmVisits,'Kunjungan, bukan outlet unik') + metricCard('SPG activation days',m.spgDays,targets.spgDays,'Jumlah hari aktivasi') + metricCard('End-user interactions',m.interactions,targets.interactions,'Interaksi, bukan transaksi') + metricCard('Open issues',m.openIssues,null,'Perlu tindak lanjut') + '</div><div class="form-note">Target: 250 prospect · 180 outlet unik · 360 FM visits · 72 SPG-days · 1.080 end-user interactions. Angka aktual ditampilkan apa adanya, bukan data dummy.</div></div>';
     const notes = '<div class="card"><h3>Standar program</h3><div class="report-row"><strong>1. Evidence dahulu</strong><p>Foto dan lokasi wajib untuk Check In/Out serta evidence outlet sebelum qualification.</p></div><div class="report-row"><strong>2. SPG setelah qualification</strong><p>Aktivasi SPG hanya dapat disimpan untuk outlet yang sudah qualified dan memiliki evidence.</p></div><div class="report-row"><strong>3. Cut-off 20:00 WIB</strong><p>Pastikan laporan tersinkron sebelum batas waktu harian.</p></div></div>';
     return pageHead('BERANDA', 'Halo, ' + (state.user.full_name || state.user.username).split(' ')[0] + '.', roleName(state.user.role) + ' · ' + fmtDate(new Date().toISOString())) + '<div class="home-layout"><div>' + attendance + quick + '</div><div>' + kpis + notes + '</div></div>';
+  }
+
+  function clientHomePage() {
+    const dashboard = state.dashboard;
+    const m = (dashboard && dashboard.metrics) || {};
+    const targets = (dashboard && dashboard.targets) || { prospects: 250, uniqueOutlets: 180, fmVisits: 360, spgDays: 72, interactions: 1080 };
+    const ready = Boolean(dashboard && dashboard.metrics);
+    const updated = dashboard && dashboard.updatedAt ? fmtDateTime(dashboard.updatedAt) : 'Menunggu data';
+    const kpis = ready
+      ? '<div class="client-kpi-grid">' +
+        metricCard('Prospect database', m.prospectCount, targets.prospects, 'Target data prospect') +
+        metricCard('Outlet terkunjungi', m.uniqueVisited, targets.uniqueOutlets, 'Target outlet unik') +
+        metricCard('Qualified outlets', m.qualifiedUnique, null, 'Outlet lolos qualification') +
+        metricCard('FM visits', m.fmVisits, targets.fmVisits, 'Target kunjungan lapangan') +
+        metricCard('SPG activation days', m.spgDays, targets.spgDays, 'Target hari aktivasi') +
+        metricCard('End-user interactions', m.interactions, targets.interactions, 'Jumlah interaksi tercatat') +
+        '</div>'
+      : '<div class="client-loading-panel"><span class="loading-spinner" aria-hidden="true"></span><div><strong>Menyiapkan ringkasan program</strong><p>Angka akan tampil setelah data tersedia.</p></div></div>';
+    const targetRows = ready ? [
+      ['Prospect database', m.prospectCount, targets.prospects],
+      ['Outlet terkunjungi', m.uniqueVisited, targets.uniqueOutlets],
+      ['FM visits', m.fmVisits, targets.fmVisits],
+      ['SPG activation days', m.spgDays, targets.spgDays],
+      ['End-user interactions', m.interactions, targets.interactions]
+    ].map(([label, actual, target]) => {
+      const amount = Number(actual || 0); const pctValue = target ? Math.min(100, Math.round(amount / target * 100)) : 0;
+      return '<div class="target-row"><div class="target-row-head"><span>' + esc(label) + '</span><strong>' + fmtNum(amount) + '<small> / ' + fmtNum(target) + '</small></strong></div><div class="target-track"><span style="width:' + pctValue + '%"></span></div><div class="target-row-foot"><span>' + pctValue + '% tercapai</span><span>' + (amount >= target ? 'Target tercapai' : 'Dalam progress') + '</span></div></div>';
+    }).join('') : '<div class="empty-state"><strong>Data program sedang disiapkan</strong>Ringkasan target akan muncul saat data berhasil dimuat.</div>';
+    const issueCount = Number(m.openIssues || 0);
+    const issueCard = ready
+      ? '<div class="client-issue ' + (issueCount ? 'has-issues' : 'no-issues') + '"><div class="client-issue-mark">' + (issueCount ? '!' : '✓') + '</div><div><strong>' + (issueCount ? fmtNum(issueCount) + ' issue perlu tindak lanjut' : 'Tidak ada issue terbuka yang tercatat') + '</strong><p>' + (issueCount ? 'Buka laporan untuk meninjau kendala lapangan yang belum ditutup.' : 'Status berdasarkan issue yang tersimpan pada sistem.') + '</p></div><button class="btn btn-small btn-plain" data-act="nav" data-page="reports">Lihat laporan</button></div>'
+      : '';
+    return pageHead('CLIENT OVERVIEW', 'Program dashboard', 'Ringkasan pencapaian, aktivitas lapangan, dan tindak lanjut program.', '<span class="status-pill ' + (dashboard ? 'online' : 'offline') + ' client-updated">' + esc(updated) + '</span>') +
+      '<section class="client-hero"><div class="client-hero-copy"><div class="eyebrow">TRW · PROGRAM PERFORMANCE</div><h2>Visibilitas program, dalam satu tampilan.</h2><p>Pantau hasil yang sudah tercatat, bandingkan dengan target, lalu telusuri outlet dan laporan untuk detail.</p></div><div class="client-hero-mark" aria-hidden="true"><span>TRW</span><small>FIELD EXECUTION</small></div></section>' +
+      '<div class="client-section-heading"><div><div class="eyebrow">PROGRAM SNAPSHOT</div><h2>Ringkasan eksekusi</h2></div><span class="muted small">Data aktual sistem</span></div>' + kpis +
+      '<div class="client-content-grid"><section class="card client-target-card"><div class="card-head"><div><div class="eyebrow">TARGET TRACKER</div><h2>Target vs actual</h2><p class="muted small">Progress berdasarkan target program yang dikonfigurasi.</p></div><span class="tag yellow">PROGRAM KPI</span></div>' + targetRows + '</section>' +
+      '<section class="card client-insight-card"><div class="eyebrow">PROGRAM FOLLOW-UP</div><h2>Perhatian & laporan</h2><p class="muted small">Gunakan laporan dan evidence untuk melihat konteks di balik angka.</p>' + issueCard +
+      '<div class="client-shortcuts"><button class="client-shortcut" data-act="nav" data-page="outlets"><span class="shortcut-icon" aria-hidden="true">01</span><span><strong>Outlet & coverage</strong><small>Lihat status outlet dan qualification.</small></span><span class="shortcut-arrow" aria-hidden="true">→</span></button><button class="client-shortcut" data-act="nav" data-page="reports"><span class="shortcut-icon" aria-hidden="true">02</span><span><strong>Laporan & evidence</strong><small>Tinjau aktivitas dan ekspor laporan.</small></span><span class="shortcut-arrow" aria-hidden="true">→</span></button></div></section></div>' +
+      '<div class="client-footnote">Dashboard ini menampilkan data yang benar-benar tersimpan. Tren waktu, rincian area, dan metrik merchandising akan ditampilkan setelah tersedia sebagai data terstruktur untuk pelaporan.</div>';
   }
 
   function outletsPage() {
@@ -467,16 +522,18 @@
 
   function morePage() {
     const role = state.user.role;
-    const cards = [
-      '<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>',
-      '<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>',
-      '<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>'
-    ];
+    const cards = [];
+    if (role !== 'CLIENT') cards.push('<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>');
+    cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>');
+    cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Beat plan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
-    cards.push('<button class="action-tile" data-act="logout"><strong>Logout aplikasi</strong><small>Ini tidak mengakhiri Check In yang masih aktif.</small></button>');
-    return pageHead('MENU','Pengaturan & alat','Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div><div class="card"><h3>Catatan penggunaan</h3><p class="muted small">Aplikasi membutuhkan HTTPS untuk akses kamera dan GPS. Ketika offline, kiriman yang didukung disimpan di perangkat dan ditandai menunggu sinkronisasi. Jangan menghapus data browser sebelum antrean terkirim.</p><p class="muted small">Login/Logout mengatur sesi aplikasi. Check In/Check Out merekam kehadiran lapangan dengan foto dan GPS; keduanya tidak otomatis saling mengakhiri.</p></div>';
+    cards.push('<button class="action-tile' + (role === 'CLIENT' ? ' client-logout-tile' : '') + '" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
+    const note = role === 'CLIENT'
+      ? '<div class="card"><div class="eyebrow">AKSES CLIENT</div><h3>Mode read-only</h3><p class="muted small">Akun client dapat meninjau ringkasan program, outlet, laporan dan evidence yang tersedia. Data operasional tidak dapat ditambahkan atau diubah dari akun ini.</p></div>'
+      : '<div class="card"><h3>Catatan penggunaan</h3><p class="muted small">Aplikasi membutuhkan HTTPS untuk akses kamera dan GPS. Ketika offline, kiriman yang didukung disimpan di perangkat dan ditandai menunggu sinkronisasi. Jangan menghapus data browser sebelum antrean terkirim.</p><p class="muted small">Login/Logout mengatur sesi aplikasi. Check In/Check Out merekam kehadiran lapangan dengan foto dan GPS; keduanya tidak otomatis saling mengakhiri.</p></div>';
+    return pageHead('MENU','Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note;
   }
 
   function usersPage() {

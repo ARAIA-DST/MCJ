@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trw-field-shell-v1.2.0-fast-login';
+const CACHE_NAME = 'trw-field-shell-v1.4.0-ui-refresh';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/trw-icon.svg'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
