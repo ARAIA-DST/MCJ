@@ -354,7 +354,7 @@
       default: page = homePage();
     }
     const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.4.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.5.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
   }
@@ -383,38 +383,44 @@
     const m = (dashboard && dashboard.metrics) || {};
     const targets = (dashboard && dashboard.targets) || { prospects: 250, uniqueOutlets: 180, fmVisits: 360, spgDays: 72, interactions: 1080 };
     const ready = Boolean(dashboard && dashboard.metrics);
-    const updated = dashboard && dashboard.updatedAt ? fmtDateTime(dashboard.updatedAt) : 'Menunggu data';
-    const kpis = ready
-      ? '<div class="client-kpi-grid">' +
-        metricCard('Prospect database', m.prospectCount, targets.prospects, 'Target data prospect') +
-        metricCard('Outlet terkunjungi', m.uniqueVisited, targets.uniqueOutlets, 'Target outlet unik') +
-        metricCard('Qualified outlets', m.qualifiedUnique, null, 'Outlet lolos qualification') +
-        metricCard('FM visits', m.fmVisits, targets.fmVisits, 'Target kunjungan lapangan') +
-        metricCard('SPG activation days', m.spgDays, targets.spgDays, 'Target hari aktivasi') +
-        metricCard('End-user interactions', m.interactions, targets.interactions, 'Jumlah interaksi tercatat') +
-        '</div>'
-      : '<div class="client-loading-panel"><span class="loading-spinner" aria-hidden="true"></span><div><strong>Menyiapkan ringkasan program</strong><p>Angka akan tampil setelah data tersedia.</p></div></div>';
-    const targetRows = ready ? [
-      ['Prospect database', m.prospectCount, targets.prospects],
-      ['Outlet terkunjungi', m.uniqueVisited, targets.uniqueOutlets],
-      ['FM visits', m.fmVisits, targets.fmVisits],
-      ['SPG activation days', m.spgDays, targets.spgDays],
-      ['End-user interactions', m.interactions, targets.interactions]
-    ].map(([label, actual, target]) => {
-      const amount = Number(actual || 0); const pctValue = target ? Math.min(100, Math.round(amount / target * 100)) : 0;
-      return '<div class="target-row"><div class="target-row-head"><span>' + esc(label) + '</span><strong>' + fmtNum(amount) + '<small> / ' + fmtNum(target) + '</small></strong></div><div class="target-track"><span style="width:' + pctValue + '%"></span></div><div class="target-row-foot"><span>' + pctValue + '% tercapai</span><span>' + (amount >= target ? 'Target tercapai' : 'Dalam progress') + '</span></div></div>';
-    }).join('') : '<div class="empty-state"><strong>Data program sedang disiapkan</strong>Ringkasan target akan muncul saat data berhasil dimuat.</div>';
+    const updated = dashboard && dashboard.updatedAt ? fmtDateTime(dashboard.updatedAt) : 'Belum tersedia';
     const issueCount = Number(m.openIssues || 0);
-    const issueCard = ready
-      ? '<div class="client-issue ' + (issueCount ? 'has-issues' : 'no-issues') + '"><div class="client-issue-mark">' + (issueCount ? '!' : '✓') + '</div><div><strong>' + (issueCount ? fmtNum(issueCount) + ' issue perlu tindak lanjut' : 'Tidak ada issue terbuka yang tercatat') + '</strong><p>' + (issueCount ? 'Buka laporan untuk meninjau kendala lapangan yang belum ditutup.' : 'Status berdasarkan issue yang tersimpan pada sistem.') + '</p></div><button class="btn btn-small btn-plain" data-act="nav" data-page="reports">Lihat laporan</button></div>'
-      : '';
-    return pageHead('CLIENT OVERVIEW', 'Program dashboard', 'Ringkasan pencapaian, aktivitas lapangan, dan tindak lanjut program.', '<span class="status-pill ' + (dashboard ? 'online' : 'offline') + ' client-updated">' + esc(updated) + '</span>') +
-      '<section class="client-hero"><div class="client-hero-copy"><div class="eyebrow">TRW · PROGRAM PERFORMANCE</div><h2>Visibilitas program, dalam satu tampilan.</h2><p>Pantau hasil yang sudah tercatat, bandingkan dengan target, lalu telusuri outlet dan laporan untuk detail.</p></div><div class="client-hero-mark" aria-hidden="true"><span>TRW</span><small>FIELD EXECUTION</small></div></section>' +
-      '<div class="client-section-heading"><div><div class="eyebrow">PROGRAM SNAPSHOT</div><h2>Ringkasan eksekusi</h2></div><span class="muted small">Data aktual sistem</span></div>' + kpis +
-      '<div class="client-content-grid"><section class="card client-target-card"><div class="card-head"><div><div class="eyebrow">TARGET TRACKER</div><h2>Target vs actual</h2><p class="muted small">Progress berdasarkan target program yang dikonfigurasi.</p></div><span class="tag yellow">PROGRAM KPI</span></div>' + targetRows + '</section>' +
-      '<section class="card client-insight-card"><div class="eyebrow">PROGRAM FOLLOW-UP</div><h2>Perhatian & laporan</h2><p class="muted small">Gunakan laporan dan evidence untuk melihat konteks di balik angka.</p>' + issueCard +
-      '<div class="client-shortcuts"><button class="client-shortcut" data-act="nav" data-page="outlets"><span class="shortcut-icon" aria-hidden="true">01</span><span><strong>Outlet & coverage</strong><small>Lihat status outlet dan qualification.</small></span><span class="shortcut-arrow" aria-hidden="true">→</span></button><button class="client-shortcut" data-act="nav" data-page="reports"><span class="shortcut-icon" aria-hidden="true">02</span><span><strong>Laporan & evidence</strong><small>Tinjau aktivitas dan ekspor laporan.</small></span><span class="shortcut-arrow" aria-hidden="true">→</span></button></div></section></div>' +
-      '<div class="client-footnote">Dashboard ini menampilkan data yang benar-benar tersimpan. Tren waktu, rincian area, dan metrik merchandising akan ditampilkan setelah tersedia sebagai data terstruktur untuk pelaporan.</div>';
+    const scorecard = [
+      ['Database prospect', m.prospectCount, targets.prospects, 'Basis outlet yang dihimpun'],
+      ['Outlet unik dikunjungi', m.uniqueVisited, targets.uniqueOutlets, 'Cakupan outlet yang sudah dikunjungi'],
+      ['FM visits', m.fmVisits, targets.fmVisits, 'Total kunjungan lapangan'],
+      ['SPG activation days', m.spgDays, targets.spgDays, 'Hari aktivasi SPG'],
+      ['End-user interactions', m.interactions, targets.interactions, 'Interaksi konsumen tercatat']
+    ];
+    const scorecardHtml = ready ? scorecard.map(([label, actual, target, note]) => {
+      const value = Number(actual || 0);
+      const goal = Number(target || 0);
+      const progress = goal > 0 ? Math.round(value / goal * 100) : null;
+      const width = progress === null ? 0 : Math.min(100, Math.max(0, progress));
+      return '<div class="client-score-row"><div class="client-score-main"><div><strong>' + esc(label) + '</strong><small>' + esc(note) + '</small></div><div class="client-score-numbers"><strong>' + fmtNum(value) + '</strong><span> / ' + fmtNum(goal) + '</span></div></div><div class="client-score-track"><span style="width:' + width + '%"></span></div><div class="client-score-meta"><span>' + (progress === null ? 'Target belum dikonfigurasi' : progress + '% dari target') + '</span><span>' + (progress === null ? '—' : (value >= goal ? 'Target tercapai' : 'Dalam progress')) + '</span></div></div>';
+    }).join('') : '<div class="client-data-state"><strong>Ringkasan belum tersedia</strong><p>Data KPI akan tampil setelah dashboard berhasil dimuat.</p></div>';
+
+    const visits = ((state.reports && state.reports.visits) || []).slice(0, 5);
+    const activityHtml = visits.length ? visits.map((row) => {
+      const when = row.visit_date || row.work_date || row.date || row.created_at || row.checkin_at;
+      const outlet = outletName(row.outlet_id) || row.outlet_name || row.outlet_id || 'Outlet';
+      const person = row.user_name || userName(row.user_id) || 'Tim lapangan';
+      const status = row.status || 'Tercatat';
+      return '<div class="client-activity-row"><span class="client-activity-dot"></span><div class="client-activity-copy"><strong>' + esc(outlet) + '</strong><small>' + esc(person) + ' · ' + esc(fmtDateTime(when)) + '</small></div><span class="client-activity-status">' + esc(status) + '</span></div>';
+    }).join('') : '<div class="client-data-state compact"><strong>Belum ada aktivitas untuk ditampilkan</strong><p>Aktivitas kunjungan terbaru akan muncul di bagian ini setelah tersimpan.</p></div>';
+
+    const issuePanel = ready
+      ? '<div class="client-health-panel ' + (issueCount ? 'attention' : 'clear') + '"><span class="client-health-icon">' + (issueCount ? '!' : '✓') + '</span><div><strong>' + (issueCount ? fmtNum(issueCount) + ' issue terbuka' : 'Tidak ada issue terbuka') + '</strong><p>' + (issueCount ? 'Perlu ditinjau melalui laporan program.' : 'Tidak ada tindak lanjut terbuka yang tercatat saat ini.') + '</p></div></div>'
+      : '<div class="client-data-state compact"><strong>Status tindak lanjut belum tersedia</strong><p>Informasi issue akan tampil bersama data dashboard.</p></div>';
+
+    return pageHead('CLIENT DASHBOARD', 'Ringkasan program', 'Satu tampilan untuk memahami pencapaian, aktivitas terbaru, dan hal yang perlu diperhatikan.', '<span class="client-updated-label">Pembaruan data <strong>' + esc(updated) + '</strong></span>') +
+      '<section class="client-overview-banner"><div><div class="eyebrow">TRW · FIELD EXECUTION</div><h2>Program overview</h2><p>Pantau hasil eksekusi berdasarkan data yang sudah tercatat di sistem.</p></div><div class="client-banner-side"><span class="client-live-dot"></span><span>' + (ready ? 'Data dashboard tersedia' : 'Menunggu data dashboard') + '</span></div></section>' +
+      '<div class="client-dashboard-grid">' +
+        '<section class="card client-scorecard"><div class="client-panel-heading"><div><div class="eyebrow">PERFORMANCE SCORECARD</div><h2>Pencapaian terhadap target</h2><p class="muted small">Setiap indikator ditampilkan satu kali agar mudah dibaca dan tidak berulang.</p></div><span class="tag yellow">TARGET vs ACTUAL</span></div>' + scorecardHtml + '</section>' +
+        '<aside class="client-side-column"><section class="card client-health-card"><div class="eyebrow">PROGRAM HEALTH</div><h2>Perhatian program</h2><p class="muted small">Ringkasan kendala yang membutuhkan perhatian.</p>' + issuePanel + '<button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan program</button></section>' +
+        '<section class="card client-activity-card"><div class="client-panel-heading"><div><div class="eyebrow">FIELD EXECUTION</div><h2>Aktivitas terbaru</h2><p class="muted small">Lima kunjungan terbaru yang tersedia.</p></div></div>' + activityHtml + '<button class="client-text-link" data-act="nav" data-page="reports">Lihat seluruh aktivitas <span aria-hidden="true">→</span></button></section></aside>' +
+      '</div>' +
+      '<section class="client-detail-links"><div><div class="eyebrow">TELUSURI PROGRAM</div><h2>Butuh detail lebih lanjut?</h2><p>Buka data outlet atau laporan untuk meninjau detail eksekusi dan evidence.</p></div><div class="client-detail-actions"><button class="btn btn-plain" data-act="nav" data-page="outlets">Lihat outlet</button><button class="btn btn-yellow" data-act="nav" data-page="reports">Lihat laporan & evidence</button></div></section>';
   }
 
   function outletsPage() {
