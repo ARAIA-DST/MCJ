@@ -152,7 +152,10 @@
       let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 500;
       const cleanup = () => { clearTimeout(timer); clearTimeout(pollTimer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
       const finish = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
+      
+      // Mitigasi P0: Timeout 45s untuk Apps Script
       const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Belum ada konfirmasi dari Apps Script. Buka Apps Script → Executions untuk memeriksa kiriman sebelum mencoba ulang.'); err.transport = true; reject(err); }, 45000);
+      
       const waiter = (data) => finish(data);
       waiter.source = iframe.contentWindow;
       postWaiters.set(rid, waiter);
@@ -160,6 +163,7 @@
         if (complete || pollInFlight) return;
         pollInFlight = true;
         try {
+          // Mitigasi P0: Timeout per poll diperpanjang ke 9000ms
           const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 9000 });
           if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) { finish(status.result); return; }
         } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
@@ -232,7 +236,7 @@
         const coords = position.coords;
         if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude) || !Number.isFinite(coords.accuracy)) { reject(new Error('GPS belum memberikan lokasi valid.')); return; }
         
-        // Use dynamically provided threshold if available
+        // Mitigasi P0: Gunakan nilai config backend, fallback ke 150m jika belum termuat
         const maxAcc = (state.dashboard && state.dashboard.maxGpsAccuracy) ? Number(state.dashboard.maxGpsAccuracy) : 150;
         
         if (coords.accuracy > maxAcc) { reject(new Error('Akurasi GPS ' + Math.round(coords.accuracy) + ' m. Maksimum yang diizinkan ' + maxAcc + ' m. Tunggu sebentar atau pindah ke area terbuka.')); return; }
@@ -660,7 +664,7 @@
   async function uploadEvidenceFor(formPhotoData, kind, recordId, outletId, geo, stableEvidenceId) {
     if (!formPhotoData) return '';
     const evidenceId = stableEvidenceId || uid('EVD');
-    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', record_id: recordId, outlet_id: outletId || '', kind: kind, photo: {dataUrl:formPhotoData.dataUrl,mimeType:'image/jpeg'}, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
+    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', recordId: recordId, outlet_id: outletId || '', kind: kind, photo: {dataUrl:formPhotoData.dataUrl,mimeType:'image/jpeg'}, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
     return result.id || evidenceId;
   }
 
@@ -847,8 +851,7 @@
       if (/^[=+@\-]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g,'""') + '"';
     }).join(','));
-    const blob = new Blob(['﻿' + lines.join('
-')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function exportSummary(period) {
     const summary = (state.reports && state.reports.periods && state.reports.periods[period]) || {};
