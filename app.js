@@ -147,24 +147,40 @@
       let proof;
       try { proof = makeBridgeProof(); } catch (error) { error.transport = false; reject(error); return; }
       const iframe = document.createElement('iframe'); iframe.name = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, ''); iframe.setAttribute('aria-hidden', 'true'); iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-10000px;top:-10000px;border:0';
-      const form = document.createElement('form'); form.method = 'POST'; form.target = iframe.name; form.action = endpointWith({ bridge: '1', rid: rid, proof: proof }); form.style.display = 'none'; form.acceptCharset = 'UTF-8';
-      const input = document.createElement('input'); input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(payload); form.appendChild(input);
-      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 500;
+      const form = document.createElement('form');
+      form.method = 'POST'; form.target = iframe.name; form.action = String(C.API_URL || '').trim();
+      form.enctype = 'application/x-www-form-urlencoded'; form.acceptCharset = 'UTF-8'; form.style.display = 'none';
+      // Send the bridge metadata in the POST body, not only in the URL query.
+      // This keeps the acknowledgement identifiers attached to the request when
+      // Apps Script redirects the iframe response to script.googleusercontent.com.
+      const postFields = { bridge: '1', rid: rid, proof: proof, payload: JSON.stringify(payload) };
+      Object.keys(postFields).forEach((name) => {
+        const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = postFields[name]; form.appendChild(input);
+      });
+      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 400; let pollCount = 0; let lastPollError = '';
       const cleanup = () => { clearTimeout(timer); clearTimeout(pollTimer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
       const finish = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
-      const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Belum ada konfirmasi dari Apps Script. Buka Apps Script → Executions untuk memeriksa kiriman sebelum mencoba ulang.'); err.transport = true; reject(err); }, 35000);
+      const timer = setTimeout(() => {
+        if (complete) return;
+        complete = true; cleanup();
+        const detail = lastPollError ? ' Pemeriksaan status terakhir: ' + lastPollError : '';
+        const err = new Error('Belum ada konfirmasi dari Apps Script (ID ' + rid + ', ' + pollCount + ' pemeriksaan). Buka Apps Script → Executions untuk memastikan hasil kiriman sebelum mencoba ulang.' + detail);
+        err.transport = true; err.requestId = rid; reject(err);
+      }, 40000);
       const waiter = (data) => finish(data);
       waiter.source = iframe.contentWindow;
       postWaiters.set(rid, waiter);
       async function pollStatus() {
         if (complete || pollInFlight) return;
-        pollInFlight = true;
+        pollInFlight = true; pollCount++;
         try {
           const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 7000 });
           if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) { finish(status.result); return; }
-        } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
-        finally { pollInFlight = false; }
-        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.6), 4000); }
+          if (status && status.ok === false) lastPollError = status.error || 'Status konfirmasi ditolak.';
+        } catch (error) {
+          lastPollError = error && error.message ? error.message : String(error || 'Gagal membaca status.');
+        } finally { pollInFlight = false; }
+        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.5), 3000); }
       }
       document.body.appendChild(iframe); document.body.appendChild(form);
       waiter.source = iframe.contentWindow;
@@ -355,7 +371,7 @@
       default: page = homePage();
     }
     const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.1<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
   }
