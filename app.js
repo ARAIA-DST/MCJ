@@ -147,40 +147,24 @@
       let proof;
       try { proof = makeBridgeProof(); } catch (error) { error.transport = false; reject(error); return; }
       const iframe = document.createElement('iframe'); iframe.name = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, ''); iframe.setAttribute('aria-hidden', 'true'); iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-10000px;top:-10000px;border:0';
-      const form = document.createElement('form');
-      form.method = 'POST'; form.target = iframe.name; form.action = String(C.API_URL || '').trim();
-      form.enctype = 'application/x-www-form-urlencoded'; form.acceptCharset = 'UTF-8'; form.style.display = 'none';
-      // Send the bridge metadata in the POST body, not only in the URL query.
-      // This keeps the acknowledgement identifiers attached to the request when
-      // Apps Script redirects the iframe response to script.googleusercontent.com.
-      const postFields = { bridge: '1', rid: rid, proof: proof, payload: JSON.stringify(payload) };
-      Object.keys(postFields).forEach((name) => {
-        const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = postFields[name]; form.appendChild(input);
-      });
-      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 400; let pollCount = 0; let lastPollError = '';
+      const form = document.createElement('form'); form.method = 'POST'; form.target = iframe.name; form.action = endpointWith({ bridge: '1', rid: rid, proof: proof }); form.style.display = 'none'; form.acceptCharset = 'UTF-8';
+      const input = document.createElement('input'); input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(payload); form.appendChild(input);
+      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 500;
       const cleanup = () => { clearTimeout(timer); clearTimeout(pollTimer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
       const finish = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
-      const timer = setTimeout(() => {
-        if (complete) return;
-        complete = true; cleanup();
-        const detail = lastPollError ? ' Pemeriksaan status terakhir: ' + lastPollError : '';
-        const err = new Error('Belum ada konfirmasi dari Apps Script (ID ' + rid + ', ' + pollCount + ' pemeriksaan). Buka Apps Script → Executions untuk memastikan hasil kiriman sebelum mencoba ulang.' + detail);
-        err.transport = true; err.requestId = rid; reject(err);
-      }, 40000);
+      const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Belum ada konfirmasi dari Apps Script. Buka Apps Script → Executions untuk memeriksa kiriman sebelum mencoba ulang.'); err.transport = true; reject(err); }, 45000);
       const waiter = (data) => finish(data);
       waiter.source = iframe.contentWindow;
       postWaiters.set(rid, waiter);
       async function pollStatus() {
         if (complete || pollInFlight) return;
-        pollInFlight = true; pollCount++;
+        pollInFlight = true;
         try {
-          const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 7000 });
+          const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 9000 });
           if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) { finish(status.result); return; }
-          if (status && status.ok === false) lastPollError = status.error || 'Status konfirmasi ditolak.';
-        } catch (error) {
-          lastPollError = error && error.message ? error.message : String(error || 'Gagal membaca status.');
-        } finally { pollInFlight = false; }
-        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.5), 3000); }
+        } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
+        finally { pollInFlight = false; }
+        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.6), 4000); }
       }
       document.body.appendChild(iframe); document.body.appendChild(form);
       waiter.source = iframe.contentWindow;
@@ -247,7 +231,11 @@
       navigator.geolocation.getCurrentPosition((position) => {
         const coords = position.coords;
         if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude) || !Number.isFinite(coords.accuracy)) { reject(new Error('GPS belum memberikan lokasi valid.')); return; }
-        if (coords.accuracy > 150) { reject(new Error('Akurasi GPS ' + Math.round(coords.accuracy) + ' m. Tunggu sebentar atau pindah ke area lebih terbuka, lalu coba lagi.')); return; }
+        
+        // Use dynamically provided threshold if available
+        const maxAcc = (state.dashboard && state.dashboard.maxGpsAccuracy) ? Number(state.dashboard.maxGpsAccuracy) : 150;
+        
+        if (coords.accuracy > maxAcc) { reject(new Error('Akurasi GPS ' + Math.round(coords.accuracy) + ' m. Maksimum yang diizinkan ' + maxAcc + ' m. Tunggu sebentar atau pindah ke area terbuka.')); return; }
         resolve({ lat: Number(coords.latitude), lng: Number(coords.longitude), accuracy: Math.round(coords.accuracy * 10) / 10 });
       }, (error) => {
         const notes = { 1: 'Izin lokasi ditolak. Aktifkan izin lokasi untuk browser.', 2: 'Lokasi belum tersedia. Periksa GPS perangkat.', 3: 'GPS terlalu lama merespons. Coba kembali.' };
@@ -859,7 +847,8 @@
       if (/^[=+@\-]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g,'""') + '"';
     }).join(','));
-    const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const blob = new Blob(['﻿' + lines.join('
+')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function exportSummary(period) {
     const summary = (state.reports && state.reports.periods && state.reports.periods[period]) || {};
