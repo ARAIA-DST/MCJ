@@ -21,6 +21,7 @@
     reports: null,
     users: [],
     beatPlan: [],
+    fmRoute: null,
     issues: [],
     attendance: null,
     openAttendance: readJson(localStorage.getItem(STORE.openAttendance), null),
@@ -354,13 +355,14 @@
       default: page = homePage();
     }
     const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.5.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
   }
 
   function homePage() {
     if (state.user && state.user.role === 'CLIENT') return clientHomePage();
+    if (state.user && state.user.role === 'FM') return fmHomePage();
     const m = (state.dashboard && state.dashboard.metrics) || {};
     const targets = (state.dashboard && state.dashboard.targets) || { prospects:250, uniqueOutlets:180, fmVisits:360, spgDays:72, interactions:1080 };
     const isClient = state.user.role === 'CLIENT';
@@ -376,6 +378,81 @@
     const kpis = '<div class="card"><div class="card-head"><div><h2>Progress program</h2><p class="muted small">Target kerja terpisah sesuai SOW dan revised execution plan.</p></div><span class="tag yellow">PROGRAM KPI</span></div><div class="grid grid-3">' + metricCard('Prospect',m.prospectCount,targets.prospects,'Target database awal') + metricCard('Outlet qualified',m.qualifiedUnique,targets.uniqueOutlets,'Outlet lolos qualification') + metricCard('FM visits',m.fmVisits,targets.fmVisits,'Kunjungan, bukan outlet unik') + metricCard('SPG activation days',m.spgDays,targets.spgDays,'Jumlah hari aktivasi') + metricCard('End-user interactions',m.interactions,targets.interactions,'Interaksi, bukan transaksi') + metricCard('Open issues',m.openIssues,null,'Perlu tindak lanjut') + '</div><div class="form-note">Target: 250 prospect · 180 outlet unik · 360 FM visits · 72 SPG-days · 1.080 end-user interactions. Angka aktual ditampilkan apa adanya, bukan data dummy.</div></div>';
     const notes = '<div class="card"><h3>Standar program</h3><div class="report-row"><strong>1. Evidence dahulu</strong><p>Foto dan lokasi wajib untuk Check In/Out serta evidence outlet sebelum qualification.</p></div><div class="report-row"><strong>2. SPG setelah qualification</strong><p>Aktivasi SPG hanya dapat disimpan untuk outlet yang sudah qualified dan memiliki evidence.</p></div><div class="report-row"><strong>3. Cut-off 20:00 WIB</strong><p>Pastikan laporan tersinkron sebelum batas waktu harian.</p></div></div>';
     return pageHead('BERANDA', 'Halo, ' + (state.user.full_name || state.user.username).split(' ')[0] + '.', roleName(state.user.role) + ' · ' + fmtDate(new Date().toISOString())) + '<div class="home-layout"><div>' + attendance + quick + '</div><div>' + kpis + notes + '</div></div>';
+  }
+
+
+  function fmHomePage() {
+    const route = state.fmRoute;
+    const items = route && Array.isArray(route.items) ? route.items : [];
+    const stats = (route && route.stats) || {};
+    const total = Number(stats.visits || items.length || 0);
+    const completed = Number(stats.completed || items.filter((item) => item.status === 'COMPLETED').length || 0);
+    const interactions = Number(stats.interactions || 0);
+    const evidence = Number(stats.evidence || 0);
+    const progress = total ? Math.min(100, Math.round(completed / total * 100)) : 0;
+    const active = state.openAttendance || (route && route.openAttendance) || null;
+    const activeItem = active ? items.find((item) => String(item.outlet_id) === String(active.outlet_id)) : null;
+    const dateLabel = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'Asia/Jakarta' }).format(new Date()).toUpperCase();
+    const greeting = (state.user.full_name || state.user.username || 'FM').trim().split(/\s+/)[0];
+    const statsHtml = '<div class="fm-stat-grid">' +
+      '<div class="fm-stat"><span>Kunjungan</span><strong>' + fmtNum(total) + '</strong></div>' +
+      '<div class="fm-stat"><span>Selesai</span><strong>' + fmtNum(completed) + '</strong></div>' +
+      '<div class="fm-stat"><span>Interaksi</span><strong>' + fmtNum(interactions) + '</strong></div>' +
+      '<div class="fm-stat"><span>Evidence</span><strong>' + fmtNum(evidence) + '</strong></div>' +
+    '</div>';
+    const progressHtml = '<section class="card fm-progress-card"><div class="eyebrow">PROGRES HARI INI</div>' +
+      '<div class="fm-progress-heading"><strong>' + fmtNum(completed) + ' dari ' + fmtNum(total) + ' selesai</strong><b>' + progress + '%</b></div>' +
+      '<div class="fm-progress-track"><span style="width:' + progress + '%"></span></div>' + statsHtml +
+    '</section>';
+
+    let routeContent = '';
+    if (!route) {
+      routeContent = '<div class="card fm-empty"><strong>Memuat rencana kunjungan…</strong><p>Rute hari ini sedang diambil dari sistem.</p></div>';
+    } else if (!items.length) {
+      routeContent = '<div class="card fm-empty"><strong>Belum ada rencana kunjungan hari ini</strong><p>Rute outlet ditetapkan oleh TL/Admin. Hubungi TL jika Anda belum menerima penugasan.</p></div>';
+    } else {
+      const hasOtherOpen = Boolean(active);
+      routeContent = '<div class="fm-route-list">' + items.map((item, index) => {
+        const isActive = active && String(active.outlet_id || '') === String(item.outlet_id);
+        const isCompleted = item.status === 'COMPLETED';
+        const isPlanned = item.status === 'PLANNED';
+        const firstPending = !hasOtherOpen && isPlanned && items.slice(0, index).every((prior) => prior.status !== 'PLANNED');
+        const badge = isActive ? '<span class="fm-route-badge ongoing">SEDANG DIKUNJUNGI</span>' : isCompleted ? '<span class="fm-route-badge completed">COMPLETED</span>' : firstPending ? '<span class="fm-route-badge next">NEXT VISIT</span>' : '<span class="fm-route-badge planned">PLANNED</span>';
+        let action = '';
+        if (isActive) {
+          action = '<button class="btn btn-primary btn-block" data-act="fm-checkout" data-outlet="' + esc(item.outlet_id) + '">CHECK OUT OUTLET</button>' +
+            '<button class="btn btn-soft btn-block fm-secondary-action" data-act="fm-input" data-outlet="' + esc(item.outlet_id) + '">BUKA FORM KUNJUNGAN</button>';
+        } else if (isPlanned && !hasOtherOpen) {
+          action = '<button class="btn btn-yellow btn-block" data-act="fm-checkin" data-outlet="' + esc(item.outlet_id) + '">MULAI KUNJUNGAN · CHECK IN</button>';
+        } else if (isPlanned && hasOtherOpen) {
+          action = '<button class="btn btn-soft btn-block" disabled>Selesaikan Check Out outlet aktif dahulu</button>';
+        } else {
+          action = '<div class="fm-completed-note">Check In dan Check Out tercatat' + (item.checkout_at ? ' · ' + esc(fmtDateTime(item.checkout_at)) : '') + '</div>';
+        }
+        const tags = [item.type, item.segment_final, item.priority].filter(Boolean).map((value) => '<span class="fm-outlet-chip">' + esc(value) + '</span>').join('');
+        const address = [item.address, item.area, item.city].filter(Boolean).join(', ');
+        return '<article class="fm-route-card ' + (isActive ? 'is-active' : isCompleted ? 'is-completed' : '') + '">' +
+          '<div class="fm-route-index ' + (isCompleted ? 'done' : isActive ? 'active' : '') + '">' + String(item.sequence || index + 1).padStart(2, '0') + '</div>' +
+          '<div class="fm-route-main"><div class="fm-route-meta">' + badge + (item.visit_count ? '<span class="fm-visit-count">' + fmtNum(item.visit_count) + ' visit tersimpan</span>' : '') + '</div>' +
+          '<h3>' + esc(item.outlet_name || 'Outlet') + '</h3>' +
+          (address ? '<p class="fm-route-address">' + esc(address) + '</p>' : '<p class="fm-route-address">Alamat belum tersedia</p>') +
+          (tags ? '<div class="fm-outlet-chips">' + tags + '</div>' : '') +
+          (item.notes ? '<p class="fm-route-notes">' + esc(item.notes) + '</p>' : '') + action +
+          (item.maps_link ? '<a class="fm-map-link" href="' + esc(item.maps_link) + '" target="_blank" rel="noopener">Buka peta outlet</a>' : '') +
+          '</div></article>';
+      }).join('') + '</div>';
+    }
+
+    let activeNotice = '';
+    if (active && !activeItem) {
+      const activeOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(active.outlet_id));
+      activeNotice = '<div class="card fm-active-alert"><div><span class="eyebrow">CHECK IN MASIH AKTIF</span><strong>' + esc(activeOutlet ? activeOutlet.outlet_name : (active.outlet_id || 'Outlet sebelumnya')) + '</strong><p>Check Out harus diselesaikan pada outlet yang sama sebelum memulai rute berikutnya.</p></div><button class="btn btn-primary btn-block" data-act="fm-checkout" data-outlet="' + esc(active.outlet_id || '') + '">CHECK OUT SEKARANG</button></div>';
+    }
+
+    return pageHead('FIELD MERCHANDISER', 'Halo, ' + greeting + '.', dateLabel + ' · Siap menyelesaikan rute hari ini?') +
+      progressHtml +
+      '<section class="fm-route-section"><div class="fm-section-heading"><div><div class="eyebrow">RENCANA KUNJUNGAN</div><h2>Outlet hari ini</h2></div><span class="fm-route-count">' + fmtNum(total) + ' outlet ditugaskan</span></div>' +
+      activeNotice + routeContent + '</section>';
   }
 
   function clientHomePage() {
@@ -444,12 +521,17 @@
     const isProspect = o.is_prospect || !o.segment_final;
     const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
     const status = qual ? '<span class="tag green">QUALIFIED</span>' : isProspect ? '<span class="tag yellow">PROSPECT</span>' : '<span class="tag gray">' + esc(o.status || 'BELUM VERIFIKASI') + '</span>';
-    const actions = (state.user.role === 'CLIENT' ? '<span class="tag gray">View only</span>' : '<button class="btn btn-small btn-primary" data-act="choose-outlet" data-id="' + esc(o.outlet_id) + '">Pilih outlet</button>') + (o.maps_link ? '<a class="maps-link" href="' + esc(o.maps_link) + '" target="_blank" rel="noopener">Buka Maps</a>' : '');
-    return '<div class="outlet-item"><div class="outlet-info"><strong>' + esc(o.outlet_name) + '</strong><p>' + esc(o.city || 'Area belum diisi') + (o.area ? ' · ' + esc(o.area) : '') + '</p><p>' + esc(segment) + ' · ' + esc(o.priority || 'Tanpa prioritas') + '</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' + status + (o.is_prospect ? '<span class="tag gray">BELUM VERIFIKASI FISIK</span>' : '') + '</div>' + (o.address ? '<p style="margin-top:7px">' + esc(o.address) + '</p>' : '') + '</div><div class="outlet-actions">' + actions + '</div></div>';
+    const isFM = state.user.role === 'FM';
+    const fmCanSelect = isFM && state.openAttendance && String(state.openAttendance.outlet_id || '') === String(o.outlet_id);
+    const actions = state.user.role === 'CLIENT' ? '<span class="tag gray">View only</span>' : isFM ? (fmCanSelect ? '<button class="btn btn-small btn-primary" data-act="choose-outlet" data-id="' + esc(o.outlet_id) + '">Buka input</button>' : '<span class="tag gray">Lihat Rencana Kunjungan</span>') : '<button class="btn btn-small btn-primary" data-act="choose-outlet" data-id="' + esc(o.outlet_id) + '">Pilih outlet</button>';
+    const mapAction = o.maps_link ? '<a class="maps-link" href="' + esc(o.maps_link) + '" target="_blank" rel="noopener">Buka Maps</a>' : '';
+    return '<div class="outlet-item"><div class="outlet-info"><strong>' + esc(o.outlet_name) + '</strong><p>' + esc(o.city || 'Area belum diisi') + (o.area ? ' · ' + esc(o.area) : '') + '</p><p>' + esc(segment) + ' · ' + esc(o.priority || 'Tanpa prioritas') + '</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' + status + (o.is_prospect ? '<span class="tag gray">BELUM VERIFIKASI FISIK</span>' : '') + '</div>' + (o.address ? '<p style="margin-top:7px">' + esc(o.address) + '</p>' : '') + '</div><div class="outlet-actions">' + actions + mapAction + '</div></div>';
   }
 
   function inputPage() {
     if (state.user.role === 'CLIENT') return pageHead('AKSES CLIENT','Mode hanya-baca','Akun client tidak dapat mengirim atau mengubah data operasional.') + '<div class="card"><div class="notice">Gunakan Dashboard, Outlet, dan Laporan untuk memantau program.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan</button></div>';
+    if (state.user.role === 'FM' && (!state.openAttendance || !state.openAttendance.outlet_id)) return pageHead('KUNJUNGAN OUTLET','Check In diperlukan','Pilih outlet dari Rencana Kunjungan hari ini, lalu lakukan Check In dengan foto dan GPS.') + '<div class="card"><div class="notice warning">Input kunjungan hanya terbuka setelah Check In pada outlet yang ditugaskan TL/Admin.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="home">Kembali ke Rencana Kunjungan</button></div>';
+    if (state.user.role === 'FM' && state.openAttendance && (!state.selectedOutlet || String(state.selectedOutlet.outlet_id) !== String(state.openAttendance.outlet_id))) { state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(state.openAttendance.outlet_id)) || state.selectedOutlet; }
     if (state.inputType === 'visit') return visitFormPage();
     if (state.inputType === 'activation') return activationFormPage();
     if (state.inputType === 'interaction') return interactionFormPage();
@@ -532,7 +614,7 @@
     if (role !== 'CLIENT') cards.push('<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>');
     cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>');
     cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
-    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Beat plan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
+    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
     cards.push('<button class="action-tile' + (role === 'CLIENT' ? ' client-logout-tile' : '') + '" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
@@ -557,13 +639,16 @@
 
   function beatPlanPage() {
     if (!['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
-    const userOptions = state.users.filter((u) => u.active).map((u) => ({value:u.user_id,label:u.full_name + ' · ' + u.role}));
+    const canEdit = ['ADMIN','TL'].includes(state.user.role);
+    const userOptions = state.users.filter((u) => u.active && u.role === 'FM').map((u) => ({value:u.user_id,label:u.full_name + ' · FM'}));
     const outletOptions = state.outletList.map((o) => ({value:o.outlet_id,label:o.outlet_name + ' · ' + o.city}));
-    const content = field('beat_date','Tanggal','date',{required:true,value:localDate()}) + field('beat_week','Minggu program','text',{placeholder:'Contoh: Week 03'}) + field('beat_user','Petugas','select',{required:true,blank:'Pilih petugas',options:userOptions}) + field('beat_outlet','Outlet','select',{required:true,blank:'Pilih outlet',options:outletOptions}) + field('beat_sequence','Urutan kunjungan','number',{required:true,min:1,value:'1'}) + field('beat_notes','Catatan rute','textarea',{full:true,placeholder:'Cluster / arahan / jadwal kunjungan'});
-    const list = state.beatPlan.length ? '<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Petugas</th><th>Outlet</th><th>Status</th></tr></thead><tbody>' + state.beatPlan.map((b) => '<tr><td>' + esc(fmtDate(b.date)) + '<div class="tiny muted">' + esc(b.week || '') + '</div></td><td>' + esc(userName(b.user_id) || b.user_id) + '</td><td>' + esc(outletName(b.outlet_id) || b.outlet_id) + '</td><td>' + esc(b.status || 'PLANNED') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada beat plan.</div>';
-    return pageHead('OPERASIONAL','Beat plan','Assign petugas, outlet, tanggal, dan urutan. Hindari duplikasi outlet antar-teritori.') + '<div class="card"><form data-form="beatPlan"><div class="field-grid">' + content + '</div><button type="submit" class="btn btn-yellow btn-block">Simpan beat plan</button></form></div><div class="card"><div class="card-head"><div><h2>Jadwal terbaru</h2><p class="muted small">Maksimal 100 item ditampilkan.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Refresh</button></div>' + list + '</div>';
+    const content = field('beat_date','Tanggal','date',{required:true,value:localDate()}) + field('beat_week','Minggu program','text',{placeholder:'Contoh: Week 03'}) + field('beat_user','Petugas FM','select',{required:true,blank:'Pilih FM',options:userOptions}) + field('beat_outlet','Outlet','select',{required:true,blank:'Pilih outlet',options:outletOptions}) + field('beat_sequence','Urutan kunjungan','number',{required:true,min:1,value:'1'}) + field('beat_notes','Catatan rute','textarea',{full:true,placeholder:'Cluster / arahan / jadwal kunjungan'});
+    const form = canEdit
+      ? '<div class="card"><div class="card-head"><div><h2>Assign rencana kunjungan</h2><p class="muted small">Setiap rute ditetapkan untuk satu FM, tanggal, outlet, dan urutan.</p></div></div><form data-form="beatPlan"><div class="field-grid">' + content + '</div><button type="submit" class="btn btn-yellow btn-block">Simpan rencana kunjungan</button></form></div>'
+      : '<div class="card"><div class="notice">Akun PM dapat melihat jadwal, sedangkan pembuatan dan perubahan penugasan rute dilakukan oleh TL/Admin.</div></div>';
+    const list = state.beatPlan.length ? '<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Petugas</th><th>Outlet</th><th>Status</th></tr></thead><tbody>' + state.beatPlan.map((b) => '<tr><td>' + esc(fmtDate(b.date)) + '<div class="tiny muted">' + esc(b.week || '') + '</div></td><td>' + esc(userName(b.user_id) || b.user_id) + '</td><td>' + esc(outletName(b.outlet_id) || b.outlet_id) + '</td><td>' + esc(b.status || 'PLANNED') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada rencana kunjungan.</div>';
+    return pageHead('OPERASIONAL','Rencana kunjungan','TL/Admin menetapkan outlet, tanggal, FM, dan urutan kunjungan.') + form + '<div class="card"><div class="card-head"><div><h2>Daftar rencana</h2><p class="muted small">Jadwal kunjungan yang sudah dibuat.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Refresh</button></div>' + list + '</div>';
   }
-
   function outletName(id) { const outlet = state.outletList.find((o) => String(o.outlet_id) === String(id)); return outlet ? outlet.outlet_name : ''; }
   function userName(id) { const user = state.users.find((u) => String(u.user_id) === String(id)); return user ? user.full_name : ''; }
   function fieldVal(form, name) { const node = form.elements.namedItem(name); if (!node) return ''; if (node.type === 'checkbox') return node.checked ? 'Ya' : 'Tidak'; return String(node.value == null ? '' : node.value).trim(); }
@@ -660,17 +745,33 @@
       const photo = await capturePhoto();
       toast('Membaca GPS…'); const geo = await getGeo();
       const at = new Date().toISOString(); const attendanceId = kind === 'checkin' ? uid('ATT') : state.openAttendance.attendance_id; const evidenceId = uid('EVD');
-      const payload = { attendance_id: attendanceId, evidence_id: evidenceId, outlet_id: state.selectedOutlet ? state.selectedOutlet.outlet_id : '', lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: at, photo: { dataUrl: photo.dataUrl, mimeType: 'image/jpeg' } };
+      const fmOutletId = state.user.role === 'FM' ? (kind === 'checkout' ? (state.openAttendance.outlet_id || '') : (state.selectedOutlet && state.selectedOutlet.outlet_id)) : '';
+      if (state.user.role === 'FM' && kind === 'checkin' && !fmOutletId) throw new Error('Pilih outlet dari Rencana Kunjungan sebelum Check In.');
+      const payload = { attendance_id: attendanceId, evidence_id: evidenceId, outlet_id: fmOutletId || (state.selectedOutlet ? state.selectedOutlet.outlet_id : ''), lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: at, photo: { dataUrl: photo.dataUrl, mimeType: 'image/jpeg' } };
       const result = await apiPost(kind, payload);
       if (kind === 'checkin') {
-        state.openAttendance = { attendance_id: attendanceId, checkin_at: at, status: 'OPEN', user_id: state.user.user_id, pending: !!result.queued };
+        state.openAttendance = { attendance_id: attendanceId, outlet_id: payload.outlet_id || '', checkin_at: at, status: 'OPEN', user_id: state.user.user_id, pending: !!result.queued };
         await metaPut('openAttendance', state.openAttendance); localStorage.setItem(STORE.openAttendance, JSON.stringify(state.openAttendance));
         toast(result.queued ? 'Check In disimpan di perangkat, menunggu sinkronisasi.' : 'Check In berhasil. Foto dan GPS tercatat.', 'ok');
       } else {
         state.openAttendance = null; await metaDelete('openAttendance'); localStorage.removeItem(STORE.openAttendance);
         toast(result.queued ? 'Check Out disimpan di perangkat, menunggu sinkronisasi.' : 'Check Out berhasil. Foto dan GPS tercatat.', 'ok');
       }
-      await refreshAll(false); render();
+      await refreshAll(false);
+      if (state.user.role === 'FM' && result.queued) {
+        const route = state.fmRoute || { date: localDate(), stats: { visits: 0, completed: 0, interactions: 0, evidence: 0 }, items: [] };
+        const outletId = payload.outlet_id;
+        const routeItem = (route.items || []).find((item) => String(item.outlet_id) === String(outletId));
+        if (routeItem) {
+          if (kind === 'checkin') { routeItem.status = 'IN_PROGRESS'; routeItem.attendance_id = attendanceId; routeItem.checkin_at = at; }
+          else { routeItem.status = 'COMPLETED'; routeItem.checkout_at = at; if (!routeItem._localCompletionCounted) { route.stats.completed = Number(route.stats.completed || 0) + 1; routeItem._localCompletionCounted = true; } }
+        }
+        route.openAttendance = state.openAttendance;
+        route.stats = route.stats || { visits: route.items.length, completed: 0, interactions: 0, evidence: 0 };
+        route.stats.evidence = Number(route.stats.evidence || 0) + 1;
+        state.fmRoute = route; await metaPut('fmRoute', route);
+      }
+      render();
     } catch (error) { showError(error); }
   }
 
@@ -682,21 +783,26 @@
         state.outletList = await metaGet('outlets') || state.outletList;
         state.reports = await metaGet('reports') || state.reports;
         state.attendance = await metaGet('attendance') || state.attendance;
+        if (state.user.role === 'FM') state.fmRoute = await metaGet('fmRoute') || state.fmRoute;
         await updateQueueState();
         render();
         return;
       }
-      const [dashboard, outlets, reports, attendance] = await Promise.all([
-        apiGet('dashboard'), apiGet('outlets', { limit: 500 }), apiGet('reports', { limit: 100 }), apiGet('attendance')
-      ]);
+      const requests = [apiGet('dashboard'), apiGet('outlets', { limit: 500 }), apiGet('reports', { limit: 100 }), apiGet('attendance')];
+      if (state.user.role === 'FM') requests.push(apiGet('fmRoute'));
+      const results = await Promise.all(requests);
+      const dashboard = results[0], outlets = results[1], reports = results[2], attendance = results[3];
+      const fmRoute = state.user.role === 'FM' ? results[4] : null;
       await Promise.all([metaPut('dashboard', dashboard), metaPut('outlets', outlets.items || []), metaPut('reports', reports), metaPut('attendance', attendance)]);
+      if (fmRoute) await metaPut('fmRoute', fmRoute);
       state.dashboard = dashboard; state.outletList = outlets.items || []; state.reports = reports; state.attendance = attendance;
+      if (fmRoute) state.fmRoute = fmRoute;
       const queue = await queueAll();
       const pendingCheckouts = new Set(queue.filter((i) => i.action === 'checkout').map((i) => i.payload.attendance_id));
       const pendingCheckins = queue.filter((i) => i.action === 'checkin').slice(-1)[0];
       let open = attendance.openAttendance || null;
       if (open && pendingCheckouts.has(open.attendance_id)) open = null;
-      if (!open && pendingCheckins && !pendingCheckouts.has(pendingCheckins.payload.attendance_id)) open = { attendance_id: pendingCheckins.payload.attendance_id, checkin_at: pendingCheckins.payload.at, status: 'OPEN', user_id: state.user.user_id, pending: true };
+      if (!open && pendingCheckins && !pendingCheckouts.has(pendingCheckins.payload.attendance_id)) open = { attendance_id: pendingCheckins.payload.attendance_id, outlet_id: pendingCheckins.payload.outlet_id || '', checkin_at: pendingCheckins.payload.at, status: 'OPEN', user_id: state.user.user_id, pending: true };
       if (!open) {
         const localOpen = readJson(localStorage.getItem(STORE.openAttendance), null);
         if (localOpen && localOpen.user_id === state.user.user_id && !pendingCheckouts.has(localOpen.attendance_id)) open = localOpen;
@@ -793,6 +899,7 @@
   function selectOutlet(id) {
     const item = state.outletList.find((o) => String(o.outlet_id) === String(id));
     if (!item) { toast('Outlet tidak ditemukan. Refresh daftar outlet.', 'bad'); return; }
+    if (state.user.role === 'FM' && (!state.openAttendance || String(state.openAttendance.outlet_id || '') !== String(id))) { toast('FM hanya dapat membuka input pada outlet yang sedang di-Check In. Mulai dari Rencana Kunjungan.', 'bad'); return; }
     state.selectedOutlet = item;
     state.visitFlow = null; state.activationFlow = null; state.photos = {}; state.signatureData = ''; state.signatureDrawn = false; state.signatureCapturedAt = '';
     state.lastActivationId = '';
@@ -856,6 +963,27 @@
       }
       else if (act === 'outlet-filter') { state.outletFilter = button.dataset.filter || 'all'; render(); }
       else if (act === 'choose-outlet') selectOutlet(button.dataset.id);
+      else if (act === 'fm-checkin') {
+        const id = button.dataset.outlet || '';
+        const routeItem = (state.fmRoute && state.fmRoute.items || []).find((item) => String(item.outlet_id) === String(id));
+        if (!routeItem) throw new Error('Outlet tidak ditemukan dalam rencana kunjungan hari ini.');
+        if (state.openAttendance) throw new Error('Selesaikan Check Out outlet yang sedang aktif terlebih dahulu.');
+        state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(id)) || routeItem;
+        state.visitFlow = null; state.photos = {}; state.signatureData = ''; state.signatureDrawn = false;
+        await attendanceAction('checkin');
+      }
+      else if (act === 'fm-checkout') {
+        const id = button.dataset.outlet || (state.openAttendance && state.openAttendance.outlet_id) || '';
+        if (!state.openAttendance || String(state.openAttendance.outlet_id || '') !== String(id)) throw new Error('Check In aktif untuk outlet ini tidak ditemukan.');
+        state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(id)) || state.selectedOutlet;
+        await attendanceAction('checkout');
+      }
+      else if (act === 'fm-input') {
+        const id = button.dataset.outlet || '';
+        if (!state.openAttendance || String(state.openAttendance.outlet_id || '') !== String(id)) throw new Error('Lakukan Check In pada outlet yang ditugaskan terlebih dahulu.');
+        state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(id)) || (state.fmRoute && state.fmRoute.items || []).find((item) => String(item.outlet_id) === String(id)) || null;
+        state.page = 'input'; state.inputType = ''; render();
+      }
       else if (act === 'clear-signature') { state.signatureData=''; state.signatureDrawn=false; state.signatureCapturedAt=''; const canvas=$('#owner-signature'); if(canvas){const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);} const status=$('#signature-status'); if(status) status.textContent='Belum ditandatangani.'; }
       else if (act === 'clear-outlet') { state.selectedOutlet=null; state.inputType=''; state.visitFlow=null; state.activationFlow=null; state.photos={}; state.signatureData=''; state.signatureDrawn=false; state.signatureCapturedAt=''; state.lastActivationId=''; state.page='outlets'; render(); }
       else if (act === 'start-input') { state.inputType = state.user.role === 'SPG' ? 'activation' : 'visit'; state.page='input'; render(); }
