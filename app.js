@@ -118,71 +118,104 @@
     const query = new URLSearchParams(params).toString();
     return base + (base.indexOf('?') >= 0 ? '&' : '?') + query;
   }
-  function apiGet(action, params = {}, options = {}) {
+  /**
+   * apiGet — Dual-channel GET requests to Apps Script.
+   * Channel 1: fetch() with credentials:'omit' (Google account cookies stripped, direct JSON).
+   * Channel 2: JSONP fallback (<script>) if fetch is blocked or CORS fails.
+   */
+  async function apiGet(action, params, options) {
+    params = params || {};
+    options = options || {};
+    if (!hasAPI()) throw new Error('URL Apps Script belum dipasang. Isi frontend/config.js dengan URL /exec hasil deployment.');
+    const timeout = Number(options.timeout) || 25000;
+    const query = Object.assign({}, params, { action: action, token: state.token, _: Date.now() });
+
+    // Channel 1: fetch with credentials:'omit' (clean, anonymous, no Google multi-account cookie redirect)
+    if (typeof fetch === 'function') {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timerId = controller ? setTimeout(function () { controller.abort(); }, timeout) : null;
+      try {
+        const url = endpointWith(query);
+        const response = await fetch(url, {
+          method: 'GET',
+          credentials: 'omit',
+          redirect: 'follow',
+          signal: controller ? controller.signal : undefined
+        });
+        const text = await response.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (_) {}
+        if (data && typeof data === 'object') {
+          if (data.ok === false) throw new Error(data.error || 'Permintaan gagal.');
+          return data;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') throw new Error('API terlalu lama merespons (' + Math.round(timeout / 1000) + ' dtk). Coba lagi.');
+        if (err && /Username atau password salah|Terlalu banyak percobaan|Akun tidak aktif|Permintaan ditolak|Akses tidak diizinkan/i.test(err.message)) throw err;
+        // Other fetch errors fall through to JSONP fallback
+      } finally {
+        if (timerId) clearTimeout(timerId);
+      }
+    }
+
+    // Channel 2: JSONP fallback (<script src="...">)
     return new Promise((resolve, reject) => {
-      if (!hasAPI()) { reject(new Error('URL Apps Script belum dipasang. Isi frontend/config.js dengan URL /exec hasil deployment.')); return; }
       const callbackName = '__trw_cb_' + uid('cb').replace(/[^A-Za-z0-9_]/g, '');
-      const script = document.createElement('script'); script.referrerPolicy = 'no-referrer'; let settled = false;
-      const finish = (fn, value) => { if (settled) return; settled = true; clearTimeout(timer); try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; } if (script.parentNode) script.parentNode.removeChild(script); fn(value); };
+      const script = document.createElement('script');
+      script.referrerPolicy = 'no-referrer';
+      let settled = false;
+      const timer = setTimeout(() => finish(reject, new Error('API terlalu lama merespons. Coba lagi.')), timeout);
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+        fn(value);
+      };
       window[callbackName] = (data) => {
         if (data && data.ok === false) finish(reject, new Error(data.error || 'Permintaan gagal.'));
         else finish(resolve, data || {});
       };
       script.onerror = () => finish(reject, new Error('API belum dapat dijangkau. Periksa URL deployment dan koneksi internet.'));
-      const timer = setTimeout(() => finish(reject, new Error('API terlalu lama merespons. Coba lagi.')), Number(options.timeout) || 25000);
-      const query = Object.assign({}, params, { action: action, token: state.token, callback: callbackName, _: Date.now() });
-      script.src = endpointWith(query); script.async = true; document.head.appendChild(script);
+      const jsonpQuery = Object.assign({}, query, { callback: callbackName });
+      script.src = endpointWith(jsonpQuery);
+      script.async = true;
+      document.head.appendChild(script);
     });
   }
+
   function makeBridgeProof() {
     if (!window.crypto || !window.crypto.getRandomValues) throw new Error('Browser tidak menyediakan generator aman. Buka aplikasi di Chrome/Safari terbaru melalui HTTPS.');
     const bytes = new Uint8Array(24);
     window.crypto.getRandomValues(bytes);
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
+
+  /**
+   * bridgePost — ALL POST/write requests to Apps Script.
+   * Step 1: Send POST via fetch() with credentials:'omit' + mode:'no-cors' (fire & forget, can't read response).
+   * Step 2: Poll bridgeStatus via apiGet() (which also uses credentials:'omit') to retrieve the result.
+   * No iframes, no form submissions, no postMessage — purely fetch-based.
+   */
   function bridgePost(payload) {
     return new Promise((resolve, reject) => {
-      if (!hasAPI()) { const err = new Error('URL Apps Script belum dipasang. Isi frontend/config.js dengan URL /exec hasil deployment.'); err.transport = false; reject(err); return; }
+      if (!hasAPI()) { const err = new Error('URL Apps Script belum dipasang.'); err.transport = false; reject(err); return; }
       const rid = String(payload.request_id || uid('REQ'));
       let proof;
       try { proof = makeBridgeProof(); } catch (error) { error.transport = false; reject(error); return; }
       const targetUrl = endpointWith({ bridge: '1', rid: rid, proof: proof });
-      const iframeName = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, '');
-      const iframe = document.createElement('iframe');
-      iframe.name = iframeName;
-      iframe.setAttribute('name', iframeName);
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.style.cssText = 'position:fixed;width:1px;height:1px;top:0;left:0;opacity:0.01;pointer-events:none;border:0;z-index:-1';
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.target = iframeName;
-      form.action = targetUrl;
-      form.style.display = 'none';
-      form.acceptCharset = 'UTF-8';
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'payload';
-      input.value = JSON.stringify(payload);
-      form.appendChild(input);
 
       let complete = false;
       let pollTimer = null;
       let pollInFlight = false;
-      let pollDelay = 400;
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        clearTimeout(pollTimer);
-        postWaiters.delete(rid);
-        setTimeout(() => {
-          try { iframe.remove(); form.remove(); } catch (_) {}
-        }, 50);
-      };
+      let pollDelay = 350;
 
       const finish = (data) => {
         if (complete) return;
         complete = true;
-        cleanup();
+        clearTimeout(timer);
+        clearTimeout(pollTimer);
         if (data && data.ok === false) {
           const err = new Error(data.error || 'Permintaan ditolak.');
           err.transport = false;
@@ -193,14 +226,11 @@
       const timer = setTimeout(() => {
         if (complete) return;
         complete = true;
-        cleanup();
-        const err = new Error('Belum ada konfirmasi dari Apps Script (35 dtk). Periksa: (1) Pastikan Web App diset "Who has access: Anyone", (2) Koneksi internet stabil, (3) Buka Apps Script → Executions.');
+        clearTimeout(pollTimer);
+        const err = new Error('Server tidak merespons dalam 40 detik. Periksa koneksi internet dan coba lagi.');
         err.transport = true;
         reject(err);
-      }, 35000);
-
-      const waiter = (data) => finish(data);
-      postWaiters.set(rid, waiter);
+      }, 40000);
 
       async function pollStatus() {
         if (complete || pollInFlight) return;
@@ -211,62 +241,33 @@
             finish(status.result);
             return;
           }
-        } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
+        } catch (_) { /* next poll will retry */ }
         finally { pollInFlight = false; }
         if (!complete) {
           pollTimer = setTimeout(pollStatus, pollDelay);
-          pollDelay = Math.min(Math.round(pollDelay * 1.5), 3500);
+          pollDelay = Math.min(Math.round(pollDelay * 1.4), 3000);
         }
       }
 
-      // Channel 1 (Modern & Mobile-friendly): Direct fetch (no-cors)
-      // This bypasses Safari/Chrome iframe popup blocking and offscreen throttling entirely.
-      // credentials: 'omit' is CRITICAL: it prevents Chrome/Safari from sending Google account cookies,
-      // ensuring the request behaves cleanly like Incognito mode without Google multi-account redirects.
-      let fetchSent = false;
-      if (typeof window.fetch === 'function') {
-        try {
-          window.fetch(targetUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            credentials: 'omit',
-            cache: 'no-store',
-            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-            body: JSON.stringify(payload)
-          }).then(() => {
-            if (!complete && !pollInFlight) pollStatus();
-          }).catch(() => {});
-          fetchSent = true;
-        } catch (_) {}
-      }
+      // Send POST via fetch with credentials:'omit' — Google cookies stripped → no account chooser redirect
+      fetch(targetUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        credentials: 'omit',
+        cache: 'no-store',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload)
+      }).then(() => {
+        if (!complete) pollTimer = setTimeout(pollStatus, 250);
+      }).catch(() => {
+        if (!complete) pollTimer = setTimeout(pollStatus, 400);
+      });
 
-      // Channel 2 (Legacy & Desktop postMessage fallback): Form submit into hidden iframe
-      try {
-        document.body.appendChild(iframe);
-        document.body.appendChild(form);
-        waiter.source = iframe.contentWindow;
-        // If fetch was already dispatched, delay form submit to avoid redundant execution
-        setTimeout(() => {
-          if (!complete) {
-            try { form.submit(); } catch (_) {}
-          }
-        }, fetchSent ? 1000 : 0);
-      } catch (_) {}
-
-      pollTimer = setTimeout(pollStatus, 300);
+      // Start polling immediately as well (the POST may already be processed)
+      pollTimer = setTimeout(pollStatus, 500);
     });
   }
-  window.addEventListener('message', (event) => {
-    const data = event && event.data;
-    if (!data || data.type !== 'TRW_API_RESULT' || !data.rid) return;
-    const waiter = postWaiters.get(String(data.rid));
-    if (waiter) {
-      const isGoogleOrigin = event.origin && (event.origin.indexOf('google.com') >= 0 || event.origin.indexOf('googleusercontent.com') >= 0);
-      if (event.source === waiter.source || !waiter.source || isGoogleOrigin) {
-        waiter(data.data);
-      }
-    }
-  });
   async function apiPost(action, data = {}, options = {}) {
     const payload = Object.assign({}, data, { action: action, token: action === 'login' ? '' : state.token, request_id: data.request_id || uid('REQ') });
     const allowQueue = options.allowQueue !== false && QUEUEABLE.has(action);
@@ -915,23 +916,13 @@
   async function loginSubmit(form) {
     const username = fieldVal(form, 'username');
     const password = fieldVal(form, 'password');
-    let result = null;
 
-    // Direct JSONP GET: Fast (300ms), 100% immune to cross-origin POST cookie redirects on mobile/PWA
-    try {
-      result = await apiGet('login', { username: username, password: password }, { timeout: 10000 });
-    } catch (err) {
-      if (/Username atau password salah|Terlalu banyak percobaan|Akun tidak aktif/i.test(err && err.message || '')) {
-        throw err;
-      }
-      // If Apps Script deployment hasn't been updated with GET login yet, fallback to POST bridge with credentials: 'omit'
-      result = await apiPost('login', { username: username, password: password }, { allowQueue: false });
-    }
+    // Login via GET + fetch(credentials:'omit'): fast, no cookies, works everywhere
+    const result = await apiGet('login', { username: username, password: password }, { timeout: 15000 });
 
-    if (!result || !result.token || !result.user) throw new Error('Respons login tidak valid.');
+    if (!result || !result.token || !result.user) throw new Error('Respons login tidak valid. Pastikan Code.gs dan deployment sudah diperbarui.');
     state.token = result.token; state.user = result.user; state.page = 'home';
     localStorage.setItem(STORE.token, state.token); localStorage.setItem(STORE.user, JSON.stringify(state.user));
-    // Fast first paint: do not block the login screen on dashboard/report requests.
     toast('Login berhasil. Memuat data di latar belakang…', 'ok');
     render();
     updateQueueState().catch(() => {});
