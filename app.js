@@ -221,12 +221,15 @@
 
       // Channel 1 (Modern & Mobile-friendly): Direct fetch (no-cors)
       // This bypasses Safari/Chrome iframe popup blocking and offscreen throttling entirely.
+      // credentials: 'omit' is CRITICAL: it prevents Chrome/Safari from sending Google account cookies,
+      // ensuring the request behaves cleanly like Incognito mode without Google multi-account redirects.
       let fetchSent = false;
       if (typeof window.fetch === 'function') {
         try {
           window.fetch(targetUrl, {
             method: 'POST',
             mode: 'no-cors',
+            credentials: 'omit',
             cache: 'no-store',
             headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
             body: JSON.stringify(payload)
@@ -418,14 +421,14 @@
     return '<button class="nav-btn ' + (active ? 'active' : '') + '" data-act="nav" data-page="' + page + '" aria-current="' + (active ? 'page' : 'false') + '"><span class="nav-icon" aria-hidden="true">' + navIcon(page) + '</span><span class="nav-label">' + esc(label) + '</span></button>';
   }
   function loginPage() {
-    return '<div class="login-wrap"><div class="login-card"><div class="brand-line"><div class="brand-square">TRW</div><div><div class="brand-title">Direct-to-Retailer</div><div class="eyebrow">Field Execution System</div></div></div><h1>Selamat datang.</h1><p class="subhead">Masuk untuk mencatat aktivitas lapangan, evidence, dan laporan TRW.</p><form data-form="login" autocomplete="on">' + field('username','Username','text',{required:true,placeholder:'Masukkan username',full:true}) + field('password','Password','password',{required:true,placeholder:'Masukkan password',full:true}) + '<button class="btn btn-primary btn-block" type="submit">Masuk ke aplikasi</button></form><div class="divider"></div><div class="small muted">Gunakan akun yang diberikan Admin. Login tidak sama dengan Check In kehadiran.</div><div class="footer-note">TRW Direct-to-Retailer · ARAIA Group</div></div></div>';
+    return '<div class="login-wrap"><div class="login-card"><div class="brand-line"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-img"><div><div class="brand-title">Direct-to-Retailer</div><div class="eyebrow">Field Execution System</div></div></div><h1>Selamat datang.</h1><p class="subhead">Masuk untuk mencatat aktivitas lapangan, evidence, dan laporan TRW.</p><form data-form="login" autocomplete="on">' + field('username','Username','text',{required:true,placeholder:'Masukkan username',full:true}) + field('password','Password','password',{required:true,placeholder:'Masukkan password',full:true}) + '<button class="btn btn-primary btn-block" type="submit">Masuk ke aplikasi</button></form><div class="divider"></div><div class="small muted">Gunakan akun yang diberikan Admin. Login tidak sama dengan Check In kehadiran.</div><div class="footer-note">TRW Direct-to-Retailer · ARAIA Group</div></div></div>';
   }
   function shell(content) {
     const isClient = state.user && state.user.role === 'CLIENT';
     const navigation = isClient
       ? navButton('home','Beranda','home') + navButton('outlets','Outlet','outlets') + navButton('reports','Laporan','reports') + navButton('more','Menu','more')
       : navButton('home','Beranda','home') + navButton('outlets','Outlet','outlets') + navButton('input','Input','input') + navButton('reports','Laporan','reports') + navButton('more','Menu','more');
-    return '<header class="topbar ' + (isClient ? 'client-topbar' : '') + '"><div class="topbar-inner"><div class="brand-mini"><div class="brand-square">TRW</div><div>TRW FIELD<small>DIRECT-TO-RETAILER</small></div></div><div class="top-actions"><span id="network-badge" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span><span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '">' + state.queueCount + '</span><button class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Refresh</button></div></div></header>' + content + '<nav class="bottom-nav ' + (isClient ? 'client-nav' : '') + '" aria-label="Navigasi utama">' + navigation + '</nav>';
+    return '<header class="topbar ' + (isClient ? 'client-topbar' : '') + '"><div class="topbar-inner"><div class="brand-mini"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-mini"><div>TRW FIELD<small>DIRECT-TO-RETAILER</small></div></div><div class="top-actions"><span id="network-badge" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span><span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '">' + state.queueCount + '</span><button class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Refresh</button></div></div></header>' + content + '<nav class="bottom-nav ' + (isClient ? 'client-nav' : '') + '" aria-label="Navigasi utama">' + navigation + '</nav>';
   }
   function render() {
     updateQueueState();
@@ -910,7 +913,21 @@
 
   function signOutLocal() { state.token = ''; state.user = null; localStorage.removeItem(STORE.token); localStorage.removeItem(STORE.user); state.page = 'home'; state.openAttendance = readJson(localStorage.getItem(STORE.openAttendance), null); render(); }
   async function loginSubmit(form) {
-    const result = await apiPost('login', { username: fieldVal(form,'username'), password: fieldVal(form,'password') }, { allowQueue: false });
+    const username = fieldVal(form, 'username');
+    const password = fieldVal(form, 'password');
+    let result = null;
+
+    // Direct JSONP GET: Fast (300ms), 100% immune to cross-origin POST cookie redirects on mobile/PWA
+    try {
+      result = await apiGet('login', { username: username, password: password }, { timeout: 10000 });
+    } catch (err) {
+      if (/Username atau password salah|Terlalu banyak percobaan|Akun tidak aktif/i.test(err && err.message || '')) {
+        throw err;
+      }
+      // If Apps Script deployment hasn't been updated with GET login yet, fallback to POST bridge with credentials: 'omit'
+      result = await apiPost('login', { username: username, password: password }, { allowQueue: false });
+    }
+
     if (!result || !result.token || !result.user) throw new Error('Respons login tidak valid.');
     state.token = result.token; state.user = result.user; state.page = 'home';
     localStorage.setItem(STORE.token, state.token); localStorage.setItem(STORE.user, JSON.stringify(state.user));
@@ -1038,7 +1055,7 @@
       else if (act === 'logout') {
         const open = state.openAttendance;
         if (open && !confirm('Anda masih Check In. Logout tidak melakukan Check Out. Tetap logout?')) return;
-        try { await apiPost('logout',{}, {allowQueue:false}); } catch (_) {}
+        try { await apiGet('logout').catch(() => apiPost('logout',{}, {allowQueue:false})); } catch (_) {}
         signOutLocal(); toast('Logout aplikasi berhasil.','ok');
       }
       else if (act === 'search-outlets') {
