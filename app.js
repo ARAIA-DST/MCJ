@@ -146,40 +146,123 @@
       const rid = String(payload.request_id || uid('REQ'));
       let proof;
       try { proof = makeBridgeProof(); } catch (error) { error.transport = false; reject(error); return; }
-      const iframe = document.createElement('iframe'); iframe.name = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, ''); iframe.setAttribute('aria-hidden', 'true'); iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-10000px;top:-10000px;border:0';
-      const form = document.createElement('form'); form.method = 'POST'; form.target = iframe.name; form.action = endpointWith({ bridge: '1', rid: rid, proof: proof }); form.style.display = 'none'; form.acceptCharset = 'UTF-8';
-      const input = document.createElement('input'); input.type = 'hidden'; input.name = 'payload'; input.value = JSON.stringify(payload); form.appendChild(input);
-      let complete = false; let pollTimer = null; let pollInFlight = false; let pollDelay = 500;
-      const cleanup = () => { clearTimeout(timer); clearTimeout(pollTimer); postWaiters.delete(rid); setTimeout(() => { iframe.remove(); form.remove(); }, 50); };
-      const finish = (data) => { if (complete) return; complete = true; cleanup(); if (data && data.ok === false) { const err = new Error(data.error || 'Permintaan ditolak.'); err.transport = false; reject(err); } else resolve(data || { ok: true }); };
-      
-      // Mitigasi P0: Timeout 45s untuk Apps Script
-      const timer = setTimeout(() => { if (complete) return; complete = true; cleanup(); const err = new Error('Belum ada konfirmasi dari Apps Script. Buka Apps Script → Executions untuk memeriksa kiriman sebelum mencoba ulang.'); err.transport = true; reject(err); }, 45000);
-      
+      const targetUrl = endpointWith({ bridge: '1', rid: rid, proof: proof });
+      const iframeName = 'trw_bridge_' + rid.replace(/[^A-Za-z0-9_]/g, '');
+      const iframe = document.createElement('iframe');
+      iframe.name = iframeName;
+      iframe.setAttribute('name', iframeName);
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.cssText = 'position:fixed;width:1px;height:1px;top:0;left:0;opacity:0.01;pointer-events:none;border:0;z-index:-1';
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.target = iframeName;
+      form.action = targetUrl;
+      form.style.display = 'none';
+      form.acceptCharset = 'UTF-8';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify(payload);
+      form.appendChild(input);
+
+      let complete = false;
+      let pollTimer = null;
+      let pollInFlight = false;
+      let pollDelay = 400;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        clearTimeout(pollTimer);
+        postWaiters.delete(rid);
+        setTimeout(() => {
+          try { iframe.remove(); form.remove(); } catch (_) {}
+        }, 50);
+      };
+
+      const finish = (data) => {
+        if (complete) return;
+        complete = true;
+        cleanup();
+        if (data && data.ok === false) {
+          const err = new Error(data.error || 'Permintaan ditolak.');
+          err.transport = false;
+          reject(err);
+        } else resolve(data || { ok: true });
+      };
+
+      const timer = setTimeout(() => {
+        if (complete) return;
+        complete = true;
+        cleanup();
+        const err = new Error('Belum ada konfirmasi dari Apps Script (35 dtk). Periksa: (1) Pastikan Web App diset "Who has access: Anyone", (2) Koneksi internet stabil, (3) Buka Apps Script → Executions.');
+        err.transport = true;
+        reject(err);
+      }, 35000);
+
       const waiter = (data) => finish(data);
-      waiter.source = iframe.contentWindow;
       postWaiters.set(rid, waiter);
+
       async function pollStatus() {
         if (complete || pollInFlight) return;
         pollInFlight = true;
         try {
-          // Mitigasi P0: Timeout per poll diperpanjang ke 9000ms
-          const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 9000 });
-          if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) { finish(status.result); return; }
+          const status = await apiGet('bridgeStatus', { rid: rid, proof: proof }, { timeout: 7000 });
+          if (status && status.ready && Object.prototype.hasOwnProperty.call(status, 'result')) {
+            finish(status.result);
+            return;
+          }
         } catch (_) { /* The postMessage bridge or next poll may still succeed. */ }
         finally { pollInFlight = false; }
-        if (!complete) { pollTimer = setTimeout(pollStatus, pollDelay); pollDelay = Math.min(Math.round(pollDelay * 1.6), 4000); }
+        if (!complete) {
+          pollTimer = setTimeout(pollStatus, pollDelay);
+          pollDelay = Math.min(Math.round(pollDelay * 1.5), 3500);
+        }
       }
-      document.body.appendChild(iframe); document.body.appendChild(form);
-      waiter.source = iframe.contentWindow;
-      try { form.submit(); pollTimer = setTimeout(pollStatus, 350); }
-      catch (error) { if (!complete) { complete = true; cleanup(); error.transport = true; reject(error); } }
+
+      // Channel 1 (Modern & Mobile-friendly): Direct fetch (no-cors)
+      // This bypasses Safari/Chrome iframe popup blocking and offscreen throttling entirely.
+      let fetchSent = false;
+      if (typeof window.fetch === 'function') {
+        try {
+          window.fetch(targetUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+            body: JSON.stringify(payload)
+          }).then(() => {
+            if (!complete && !pollInFlight) pollStatus();
+          }).catch(() => {});
+          fetchSent = true;
+        } catch (_) {}
+      }
+
+      // Channel 2 (Legacy & Desktop postMessage fallback): Form submit into hidden iframe
+      try {
+        document.body.appendChild(iframe);
+        document.body.appendChild(form);
+        waiter.source = iframe.contentWindow;
+        // If fetch was already dispatched, delay form submit to avoid redundant execution
+        setTimeout(() => {
+          if (!complete) {
+            try { form.submit(); } catch (_) {}
+          }
+        }, fetchSent ? 1000 : 0);
+      } catch (_) {}
+
+      pollTimer = setTimeout(pollStatus, 300);
     });
   }
   window.addEventListener('message', (event) => {
     const data = event && event.data;
     if (!data || data.type !== 'TRW_API_RESULT' || !data.rid) return;
-    const waiter = postWaiters.get(String(data.rid)); if (waiter && event.source === waiter.source) waiter(data.data);
+    const waiter = postWaiters.get(String(data.rid));
+    if (waiter) {
+      const isGoogleOrigin = event.origin && (event.origin.indexOf('google.com') >= 0 || event.origin.indexOf('googleusercontent.com') >= 0);
+      if (event.source === waiter.source || !waiter.source || isGoogleOrigin) {
+        waiter(data.data);
+      }
+    }
   });
   async function apiPost(action, data = {}, options = {}) {
     const payload = Object.assign({}, data, { action: action, token: action === 'login' ? '' : state.token, request_id: data.request_id || uid('REQ') });
@@ -235,11 +318,7 @@
       navigator.geolocation.getCurrentPosition((position) => {
         const coords = position.coords;
         if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude) || !Number.isFinite(coords.accuracy)) { reject(new Error('GPS belum memberikan lokasi valid.')); return; }
-        
-        // Mitigasi P0: Gunakan nilai config backend, fallback ke 150m jika belum termuat
-        const maxAcc = (state.dashboard && state.dashboard.maxGpsAccuracy) ? Number(state.dashboard.maxGpsAccuracy) : 150;
-        
-        if (coords.accuracy > maxAcc) { reject(new Error('Akurasi GPS ' + Math.round(coords.accuracy) + ' m. Maksimum yang diizinkan ' + maxAcc + ' m. Tunggu sebentar atau pindah ke area terbuka.')); return; }
+        if (coords.accuracy > 150) { reject(new Error('Akurasi GPS ' + Math.round(coords.accuracy) + ' m. Tunggu sebentar atau pindah ke area lebih terbuka, lalu coba lagi.')); return; }
         resolve({ lat: Number(coords.latitude), lng: Number(coords.longitude), accuracy: Math.round(coords.accuracy * 10) / 10 });
       }, (error) => {
         const notes = { 1: 'Izin lokasi ditolak. Aktifkan izin lokasi untuk browser.', 2: 'Lokasi belum tersedia. Periksa GPS perangkat.', 3: 'GPS terlalu lama merespons. Coba kembali.' };
@@ -363,7 +442,7 @@
       default: page = homePage();
     }
     const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.1<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
   }
@@ -664,7 +743,7 @@
   async function uploadEvidenceFor(formPhotoData, kind, recordId, outletId, geo, stableEvidenceId) {
     if (!formPhotoData) return '';
     const evidenceId = stableEvidenceId || uid('EVD');
-    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', recordId: recordId, outlet_id: outletId || '', kind: kind, photo: {dataUrl:formPhotoData.dataUrl,mimeType:'image/jpeg'}, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
+    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', record_id: recordId, outlet_id: outletId || '', kind: kind, photo: {dataUrl:formPhotoData.dataUrl,mimeType:'image/jpeg'}, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
     return result.id || evidenceId;
   }
 
