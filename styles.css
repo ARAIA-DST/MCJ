@@ -304,3 +304,57 @@ tbody tr:hover td { background: #fcfcfa; }
   .brand-logo-img { height: 38px; max-width: 120px; }
   .brand-logo-mini { height: 22px; max-width: 70px; }
 }
+
+/* ================================================================
+   TRW v1.6.4 — Live Survey Map Dashboard & Field Questionnaire
+   ================================================================ */
+.dashboard-map-card { padding: 22px; margin-bottom: 20px; border-radius: 18px; position: relative; }
+.dashboard-map-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.dashboard-map-header h2 { font-size: 21px; margin: 0; letter-spacing: -.3px; }
+.dashboard-map-header p { margin: 3px 0 0; color: #767d77; font-size: 12px; }
+.dashboard-map-stats { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.dashboard-map-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 750; background: #f2f4f0; color: #323833; }
+.dashboard-map-badge.live { background: #eaf6ee; color: #1e7039; }
+.dashboard-map-badge.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #27a84e; animation: mapPulse 1.8s infinite; }
+@keyframes mapPulse { 0% { box-shadow: 0 0 0 0 rgba(39,168,78,0.5); } 70% { box-shadow: 0 0 0 7px rgba(39,168,78,0); } 100% { box-shadow: 0 0 0 0 rgba(39,168,78,0); } }
+
+.dashboard-map-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.dashboard-map-filters .filter-chip { padding: 6px 12px; font-size: 11px; font-weight: 700; border-radius: 99px; }
+.dashboard-map-filters .filter-chip.active { background: #171917; color: #fff; border-color: #171917; }
+
+.dashboard-map-container { width: 100%; height: 380px; min-height: 320px; border-radius: 14px; border: 1px solid #e5e8e3; overflow: hidden; background: #e8ece9; z-index: 1; }
+@media (max-width: 600px) {
+  .dashboard-map-card { padding: 16px 14px; }
+  .dashboard-map-container { height: 310px; }
+}
+
+/* Custom Leaflet Map Markers */
+.map-custom-marker { background: none; border: none; }
+.map-pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,0.3); border: 2px solid #fff; }
+.map-pin-inner { transform: rotate(45deg); font-size: 11px; font-weight: 900; color: #fff; line-height: 1; }
+.map-pin.pin-green { background: #1fa44a; }
+.map-pin.pin-yellow { background: #dca300; }
+.map-pin.pin-blue { background: #0070e0; }
+.map-pin.pin-red { background: #d72828; }
+.map-pin.pin-gray { background: #647067; }
+
+/* Custom Leaflet Popup */
+.leaflet-popup-content-wrapper { border-radius: 14px !important; box-shadow: 0 8px 26px rgba(0,0,0,0.18) !important; padding: 4px !important; font-family: inherit !important; }
+.leaflet-popup-content { margin: 12px 14px !important; line-height: 1.4 !important; font-size: 12px !important; }
+.map-popup-title { font-size: 14px; font-weight: 800; color: #171917; margin: 0 0 4px; }
+.map-popup-meta { color: #626a64; font-size: 11px; margin-bottom: 8px; }
+.map-popup-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+.map-popup-tag { font-size: 9px; font-weight: 750; padding: 3px 6px; border-radius: 6px; text-transform: uppercase; }
+.map-popup-tag.green { background: #eaf5ed; color: #22703f; }
+.map-popup-tag.yellow { background: #fff6d4; color: #826600; }
+.map-popup-tag.blue { background: #e7f2fd; color: #085bb5; }
+.map-popup-tag.red { background: #fdeaea; color: #b71c1c; }
+.map-popup-link { display: inline-flex; align-items: center; gap: 4px; color: #0060c7; font-weight: 750; font-size: 11px; text-decoration: none; padding: 4px 0; }
+.map-popup-link:hover { text-decoration: underline; }
+
+/* Form field tweaks for revised questionnaire */
+.field-hint-box { background: #f6f8f5; border: 1px solid #e5eae3; border-radius: 9px; padding: 8px 12px; margin-top: 5px; font-size: 11px; color: #525a54; line-height: 1.4; }
+.field-check-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.field-check-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; border: 1px solid #d9ded7; background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+.field-check-pill input { margin: 0; }
+.field-check-pill.checked { background: #fff9d9; border-color: #d6b300; color: #4e4000; }

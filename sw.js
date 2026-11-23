@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trw-field-shell-v1.6.3-fm-route';
+const CACHE_NAME = 'trw-field-shell-v1.6.4-fm-route';
 const SHELL = [
   './',
   './index.html',
@@ -6,6 +6,8 @@ const SHELL = [
   './app.js',
   './config.js',
   './manifest.webmanifest',
+  './vendor/leaflet.css',
+  './vendor/leaflet.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-96.png',

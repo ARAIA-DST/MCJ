@@ -442,14 +442,169 @@
       case 'users': page = usersPage(); break;
       case 'beatplan': page = beatPlanPage(); break;
       case 'createOutlet': page = createOutletPage(); break;
-      case 'client-dashboard': page = clientHomePage(); break;
       case 'more': page = morePage(); break;
       default: page = homePage();
     }
     const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.0<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.4<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
+    initDashboardMap();
+  }
+
+  let currentLeafletMap = null;
+  let currentMapFilter = 'all';
+
+  function mapCardHtml(mapId = 'dashboard-map') {
+    const outlets = state.outletList || [];
+    const total = outlets.length;
+    const qualCount = outlets.filter((o) => o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED').length;
+    const srvVisits = (state.reports && state.reports.visits) || [];
+    const srvCount = srvVisits.length;
+    const prospectCount = outlets.filter((o) => o.is_prospect || !o.segment_final || String(o.status).toUpperCase().includes('UNVERIFIED') || String(o.status).toUpperCase().includes('BELUM')).length;
+
+    return '<section class="card dashboard-map-card">' +
+      '<div class="dashboard-map-header">' +
+        '<div>' +
+          '<div class="eyebrow">MONITORING GEOGRAFIS</div>' +
+          '<h2>Dashboard Live Map Survey FM</h2>' +
+          '<p>Peta sebaran outlet, status qualification, dan hasil survey lapangan.</p>' +
+        '</div>' +
+        '<div class="dashboard-map-stats">' +
+          '<span class="dashboard-map-badge live">LIVE SURVEY</span>' +
+          '<span class="dashboard-map-badge"><strong>' + fmtNum(total) + '</strong> Outlet Terdata</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="dashboard-map-filters">' +
+        '<button type="button" class="filter-chip ' + (currentMapFilter === 'all' ? 'active' : '') + '" data-act="map-filter" data-filter="all">Semua (' + fmtNum(total) + ')</button>' +
+        '<button type="button" class="filter-chip ' + (currentMapFilter === 'qualified' ? 'active' : '') + '" data-act="map-filter" data-filter="qualified">🟢 Qualified (' + fmtNum(qualCount) + ')</button>' +
+        '<button type="button" class="filter-chip ' + (currentMapFilter === 'surveyed' ? 'active' : '') + '" data-act="map-filter" data-filter="surveyed">🟡 Survey Selesai (' + fmtNum(srvCount) + ')</button>' +
+        '<button type="button" class="filter-chip ' + (currentMapFilter === 'prospect' ? 'active' : '') + '" data-act="map-filter" data-filter="prospect">🔵 Prospect (' + fmtNum(prospectCount) + ')</button>' +
+      '</div>' +
+      '<div id="' + mapId + '" class="dashboard-map-container"></div>' +
+    '</section>';
+  }
+
+  function initDashboardMap(mapId) {
+    const targetId = mapId || (state.user && state.user.role === 'CLIENT' ? 'dashboard-map-client' : 'dashboard-map');
+    const container = document.getElementById(targetId);
+    if (!container || typeof L === 'undefined') return;
+
+    if (currentLeafletMap) {
+      try { currentLeafletMap.remove(); } catch (_) {}
+      currentLeafletMap = null;
+    }
+
+    const defaultCenter = [-6.2088, 106.8456];
+    const map = L.map(container, { scrollWheelZoom: false }).setView(defaultCenter, 11);
+    currentLeafletMap = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const outlets = state.outletList || [];
+    const visits = (state.reports && state.reports.visits) || [];
+    const visitMap = new Map();
+    visits.forEach((v) => { if (v.outlet_id && !visitMap.has(String(v.outlet_id))) visitMap.set(String(v.outlet_id), v); });
+
+    const cityCoords = {
+      'jakarta pusat': [-6.1818, 106.8378],
+      'jakarta barat': [-6.1674, 106.7637],
+      'jakarta selatan': [-6.2615, 106.8106],
+      'jakarta timur': [-6.2250, 106.9004],
+      'jakarta utara': [-6.1384, 106.8640],
+      'jakarta': [-6.2088, 106.8456],
+      'tangerang selatan': [-6.2887, 106.7179],
+      'tangerang': [-6.1783, 106.6319],
+      'bekasi': [-6.2383, 106.9756],
+      'depok': [-6.4025, 106.7942],
+      'bogor': [-6.5971, 106.8060]
+    };
+
+    const bounds = [];
+
+    outlets.forEach((o, index) => {
+      const isQual = o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED';
+      const isProspect = o.is_prospect || !o.segment_final || String(o.status).toUpperCase().includes('UNVERIFIED') || String(o.status).toUpperCase().includes('BELUM');
+      const hasVisit = visitMap.has(String(o.outlet_id));
+      const visit = visitMap.get(String(o.outlet_id));
+
+      if (currentMapFilter === 'qualified' && !isQual) return;
+      if (currentMapFilter === 'surveyed' && !hasVisit) return;
+      if (currentMapFilter === 'prospect' && !isProspect) return;
+
+      let lat = Number(o.lat || (visit && visit.lat) || 0);
+      let lng = Number(o.lng || (visit && visit.lng) || 0);
+
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+        const cityKey = String(o.city || '').toLowerCase();
+        let foundCity = null;
+        for (const k in cityCoords) {
+          if (cityKey.includes(k)) { foundCity = cityCoords[k]; break; }
+        }
+        if (!foundCity) foundCity = defaultCenter;
+        const jitterLat = (Math.sin((index + 1) * 17) * 0.04);
+        const jitterLng = (Math.cos((index + 1) * 23) * 0.05);
+        lat = foundCity[0] + jitterLat;
+        lng = foundCity[1] + jitterLng;
+      }
+
+      let colorClass = 'pin-gray';
+      let pinSymbol = '●';
+      let tagClass = 'gray';
+      let statusLabel = o.status || 'PROSPECT';
+
+      if (isQual) {
+        colorClass = 'pin-green';
+        pinSymbol = '✓';
+        tagClass = 'green';
+        statusLabel = 'QUALIFIED';
+      } else if (hasVisit) {
+        colorClass = 'pin-yellow';
+        pinSymbol = '★';
+        tagClass = 'yellow';
+        statusLabel = 'SURVEY SELESAI';
+      } else if (isProspect) {
+        colorClass = 'pin-blue';
+        pinSymbol = '◆';
+        tagClass = 'blue';
+        statusLabel = 'PROSPECT';
+      }
+
+      const icon = L.divIcon({
+        className: 'map-custom-marker',
+        html: '<div class="map-pin ' + colorClass + '"><div class="map-pin-inner">' + pinSymbol + '</div></div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 30],
+        popupAnchor: [0, -28]
+      });
+
+      const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
+      const address = [o.address, o.area, o.city].filter(Boolean).join(', ') || 'Alamat dalam proses verifikasi';
+      const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng);
+
+      const popupHtml = '<div class="map-popup-content">' +
+        '<div class="map-popup-tags"><span class="map-popup-tag ' + tagClass + '">' + esc(statusLabel) + '</span><span class="map-popup-tag gray">' + esc(segment) + '</span></div>' +
+        '<div class="map-popup-title">' + esc(o.outlet_name || 'Outlet') + '</div>' +
+        '<div class="map-popup-meta">' + esc(o.city || '') + (o.area ? ' · ' + esc(o.area) : '') + '</div>' +
+        '<p style="margin:4px 0 8px;color:#555;font-size:11px;">' + esc(address) + '</p>' +
+        (visit ? '<div style="font-size:10px;color:#777;margin-bottom:6px;">Surveyor: ' + esc(visit.user_name || userName(visit.user_id) || 'FM') + ' (' + fmtDate(visit.visit_date || visit.created_at) + ')</div>' : '') +
+        '<a href="' + mapsUrl + '" target="_blank" rel="noopener" class="map-popup-link">Buka di Google Maps ↗</a>' +
+      '</div>';
+
+      L.marker([lat, lng], { icon: icon }).bindPopup(popupHtml).addTo(map);
+      bounds.push([lat, lng]);
+    });
+
+    if (bounds.length) {
+      try { map.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 }); } catch (_) {}
+    }
+
+    setTimeout(() => {
+      try { map.invalidateSize(); } catch (_) {}
+    }, 250);
   }
 
   function homePage() {
@@ -469,7 +624,7 @@
     const quick = '<div class="card"><div class="card-head"><div><h2>' + (isClient ? 'Menu utama' : 'Aksi cepat') + '</h2><p class="muted small">' + (isClient ? 'Akses pantau tanpa mengubah data operasional.' : 'Pilih langkah berikutnya.') + '</p></div></div><div class="action-grid">' + actions + '</div></div>';
     const kpis = '<div class="card"><div class="card-head"><div><h2>Progress program</h2><p class="muted small">Target kerja terpisah sesuai SOW dan revised execution plan.</p></div><span class="tag yellow">PROGRAM KPI</span></div><div class="grid grid-3">' + metricCard('Prospect',m.prospectCount,targets.prospects,'Target database awal') + metricCard('Outlet qualified',m.qualifiedUnique,targets.uniqueOutlets,'Outlet lolos qualification') + metricCard('FM visits',m.fmVisits,targets.fmVisits,'Kunjungan, bukan outlet unik') + metricCard('SPG activation days',m.spgDays,targets.spgDays,'Jumlah hari aktivasi') + metricCard('End-user interactions',m.interactions,targets.interactions,'Interaksi, bukan transaksi') + metricCard('Open issues',m.openIssues,null,'Perlu tindak lanjut') + '</div><div class="form-note">Target: 250 prospect · 180 outlet unik · 360 FM visits · 72 SPG-days · 1.080 end-user interactions. Angka aktual ditampilkan apa adanya, bukan data dummy.</div></div>';
     const notes = '<div class="card"><h3>Standar program</h3><div class="report-row"><strong>1. Evidence dahulu</strong><p>Foto dan lokasi wajib untuk Check In/Out serta evidence outlet sebelum qualification.</p></div><div class="report-row"><strong>2. SPG setelah qualification</strong><p>Aktivasi SPG hanya dapat disimpan untuk outlet yang sudah qualified dan memiliki evidence.</p></div><div class="report-row"><strong>3. Cut-off 20:00 WIB</strong><p>Pastikan laporan tersinkron sebelum batas waktu harian.</p></div></div>';
-    return pageHead('BERANDA', 'Halo, ' + (state.user.full_name || state.user.username).split(' ')[0] + '.', roleName(state.user.role) + ' · ' + fmtDate(new Date().toISOString())) + '<div class="home-layout"><div>' + attendance + quick + '</div><div>' + kpis + notes + '</div></div>';
+    return pageHead('BERANDA', 'Halo, ' + (state.user.full_name || state.user.username).split(' ')[0] + '.', roleName(state.user.role) + ' · ' + fmtDate(new Date().toISOString())) + '<div class="home-layout"><div>' + attendance + quick + '</div><div>' + kpis + mapCardHtml('dashboard-map') + notes + '</div></div>';
   }
 
 
@@ -547,7 +702,6 @@
       activeNotice + routeContent + '</section>';
   }
 
-  
   function clientHomePage() {
     const dashboard = state.dashboard;
     const m = (dashboard && dashboard.metrics) || {};
@@ -583,48 +737,9 @@
       ? '<div class="client-health-panel ' + (issueCount ? 'attention' : 'clear') + '"><span class="client-health-icon">' + (issueCount ? '!' : '✓') + '</span><div><strong>' + (issueCount ? fmtNum(issueCount) + ' issue terbuka' : 'Tidak ada issue terbuka') + '</strong><p>' + (issueCount ? 'Perlu ditinjau melalui laporan program.' : 'Tidak ada tindak lanjut terbuka yang tercatat saat ini.') + '</p></div></div>'
       : '<div class="client-data-state compact"><strong>Status tindak lanjut belum tersedia</strong><p>Informasi issue akan tampil bersama data dashboard.</p></div>';
 
-    let mapHtml = '';
-    if (ready && dashboard.mapPoints) {
-      setTimeout(() => {
-        if (!window.L) return;
-        const mapEl = document.getElementById('client-live-map');
-        if (!mapEl) return;
-        const map = L.map(mapEl).setView([-6.200000, 106.816666], 11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
-        
-        const pts = dashboard.mapPoints.filter(p => p.lat && p.lng);
-        if(pts.length > 0) {
-          const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lng]));
-          map.fitBounds(bounds, {padding: [20, 20]});
-        }
-        
-        pts.forEach(p => {
-          let color = '#a3a3a3'; // unverified
-          if (p.status === 'QUALIFIED') color = '#28a745';
-          else if (p.status === 'UNQUALIFIED') color = '#dc3545';
-          else if (p.status === 'PROSPECT') color = '#ffc107';
-          
-          const markerHtml = `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>`;
-          const icon = L.divIcon({ html: markerHtml, className: '', iconSize: [14, 14], iconAnchor: [7, 7] });
-          
-          let popup = `<b>${esc(p.name)}</b><br><span style="font-size:11px">${esc(p.address || p.city)}</span><br><b>Status:</b> ${esc(p.status)}<br><b>Segmen:</b> ${esc(p.segment)}`;
-          if (p.visit_at) popup += `<br><b>Visit terakhir:</b> ${esc(fmtDate(p.visit_at))}`;
-          if (p.imgF || p.imgI) {
-             popup += `<div style="margin-top:5px;display:flex;gap:5px;">`;
-             if (p.imgF) popup += `<a href="${p.imgF}" target="_blank" style="padding:3px 6px;background:#eee;border-radius:4px;font-size:10px;text-decoration:none;color:#333;">Tampak Depan</a>`;
-             if (p.imgI) popup += `<a href="${p.imgI}" target="_blank" style="padding:3px 6px;background:#eee;border-radius:4px;font-size:10px;text-decoration:none;color:#333;">Dalam Toko</a>`;
-             popup += `</div>`;
-          }
-          L.marker([p.lat, p.lng], {icon: icon}).bindPopup(popup).addTo(map);
-        });
-      }, 500);
-      
-      mapHtml = '<section class="card"><div class="client-panel-heading"><div><div class="eyebrow">LIVE FIELD COVERAGE</div><h2>Peta Sebaran Outlet</h2><p class="muted small">Hijau: Qualified | Kuning: Prospect | Merah: Unqualified | Abu: Unverified</p></div></div><div id="client-live-map" style="width: 100%; height: 400px; border-radius: 12px; z-index: 1;"></div></section>';
-    }
-
     return pageHead('CLIENT DASHBOARD', 'Ringkasan program', 'Satu tampilan untuk memahami pencapaian, aktivitas terbaru, dan hal yang perlu diperhatikan.', '<span class="client-updated-label">Pembaruan data <strong>' + esc(updated) + '</strong></span>') +
       '<section class="client-overview-banner"><div><div class="eyebrow">TRW · FIELD EXECUTION</div><h2>Program overview</h2><p>Pantau hasil eksekusi berdasarkan data yang sudah tercatat di sistem.</p></div><div class="client-banner-side"><span class="client-live-dot"></span><span>' + (ready ? 'Data dashboard tersedia' : 'Menunggu data dashboard') + '</span></div></section>' +
-      mapHtml +
+      mapCardHtml('dashboard-map-client') +
       '<div class="client-dashboard-grid">' +
         '<section class="card client-scorecard"><div class="client-panel-heading"><div><div class="eyebrow">PERFORMANCE SCORECARD</div><h2>Pencapaian terhadap target</h2><p class="muted small">Setiap indikator ditampilkan satu kali agar mudah dibaca dan tidak berulang.</p></div><span class="tag yellow">TARGET vs ACTUAL</span></div>' + scorecardHtml + '</section>' +
         '<aside class="client-side-column"><section class="card client-health-card"><div class="eyebrow">PROGRAM HEALTH</div><h2>Perhatian program</h2><p class="muted small">Ringkasan kendala yang membutuhkan perhatian.</p>' + issuePanel + '<button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan program</button></section>' +
@@ -632,7 +747,6 @@
       '</div>' +
       '<section class="client-detail-links"><div><div class="eyebrow">TELUSURI PROGRAM</div><h2>Butuh detail lebih lanjut?</h2><p>Buka data outlet atau laporan untuk meninjau detail eksekusi dan evidence.</p></div><div class="client-detail-actions"><button class="btn btn-plain" data-act="nav" data-page="outlets">Lihat outlet</button><button class="btn btn-yellow" data-act="nav" data-page="reports">Lihat laporan & evidence</button></div></section>';
   }
-
 
   function outletsPage() {
     const items = filteredOutlets();
@@ -685,79 +799,81 @@
     if (!state.selectedOutlet) return '<div class="notice warning">Pilih outlet terlebih dahulu. <button type="button" class="link-btn" data-act="nav" data-page="outlets">Buka daftar outlet</button></div>';
     return '<div class="notice success"><strong>' + esc(state.selectedOutlet.outlet_name) + '</strong><br><span class="small">' + esc(state.selectedOutlet.city || '') + ' · ' + esc(state.selectedOutlet.outlet_id) + '</span><br><button type="button" class="link-btn" data-act="clear-outlet">Ganti outlet</button></div>';
   }
-  
   function visitFormPage() {
     if (!state.selectedOutlet) return pageHead('LAPORAN FM','Kunjungan outlet','Pilih outlet terlebih dahulu.') + selectedOutletBlock();
     if (state.user.role === 'SPG') return pageHead('AKSES','Form FM Visit','Modul ini hanya untuk FM, TL, PM, atau Admin.') + '<div class="card">Silakan pilih modul SPG Activation atau Interaction.</div>';
     
-    const visitSection = field('visit_type','Tipe kunjungan','select',{required:true,blank:'Pilih tipe kunjungan',options:['Existing','New / Prospect']}) + 
-      field('visit_notes','Catatan kunjungan','textarea',{full:true,placeholder:'Kondisi outlet, kebutuhan, follow-up…'}) + 
-      field('visit_contact','Nama owner / PIC','text',{placeholder:'Nama pemilik atau kepala mekanik'}) + 
-      field('visit_phone','No. telepon PIC','tel',{placeholder:'Opsional'}) + 
-      field('b2b_sales','Estimasi turnover / B2B sales','text',{placeholder:'Nominal atau catatan estimasi'}) + 
-      photoField('outlet','Foto outlet / tampak depan','Wajib untuk bukti visit dan qualification.',true) +
-      photoField('outlet_inside','Foto tampak dalam toko','Tampak dalam toko untuk memudahkan proses seleksi toko.',true);
-      // SIGNATURE REMOVED
-      
-    const catHTML = '<div class="field-full"><label class="field-label">Pembelian kategori rem/steering (Check)</label><div style="display:flex;gap:15px;flex-wrap:wrap;font-size:13px"><label><input type="checkbox" name="categories_checked" value="Hydraulic"> Hydraulic</label><label><input type="checkbox" name="categories_checked" value="Friction"> Friction</label><label><input type="checkbox" name="categories_checked" value="Shock Absorber"> Shock Absorber</label><label><input type="checkbox" name="categories_checked" value="Linkage"> Linkage</label></div></div>';
-    
-    const qualSection = field('outlet_type','Tipe outlet','select',{required:true,blank:'Pilih tipe outlet',options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) + 
-      field('active_bays','Jumlah active bay (bengkel/workshop)','number',{min:0,placeholder:'Minimal 3 bila outlet dikualifikasikan sebagai bengkel/workshop'}) + 
-      field('brake_steering_stock_confirmed','Stok aktif brake/steering/suspension terverifikasi?','select',{required:true,blank:'Verifikasi stok aktif',options:['Ya','Tidak','Belum diketahui']}) + 
-      field('brake_brands_detail','Detail Merek & Estimasi / Bulan','text',{placeholder:'Merek apa saja? Estimasi per bulan?'}) +
-      field('segment_final','Klasifikasi SOW final','select',{required:true,blank:'Pilih klasifikasi setelah verifikasi',options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) + 
-      field('brand_count','Jumlah brand yang dijual','number',{min:0,placeholder:'Contoh: 32'}) + 
-      field('fastmoving_brand_detail','Brand paling fast-moving & % cakupan','text',{placeholder:'Paling fastmoving merek apa? % cakupannya?'}) +
-      field('sku_count','Jumlah SKU relevan yang tersedia','number',{min:0,placeholder:'Jumlah SKU rem/steering terverifikasi'}) + 
-      field('purchase_history_signal','Pembelian kategori brake/steering dalam 6 bln','select',{required:true,blank:'Pilih status riwayat pembelian',options:[{value:'Ya',label:'Ya, ada riwayat'},{value:'Tidak',label:'Tidak ada'},{value:'Belum diketahui',label:'Belum diketahui'}]}) + 
-      catHTML + 
-      field('owner_engagement','Owner / kepala mekanik bersedia ikut edukasi?','select',{required:true,blank:'Pilih status owner',options:['Ya','Tidak','Perlu follow-up']}) + 
-      field('sku_range','Range SKU / produk relevan','text',{placeholder:'Contoh: brake pad, steering, suspension'}) + 
-      field('purchase_frequency','Frekuensi restock / pembelian','select',{options:['Mingguan','2 mingguan','Bulanan','Tidak rutin','Belum diketahui']}) + 
-      field('trw_shelf_presence','TRW tersedia di rak / stok?','select',{required:true,blank:'Pilih status stok/display',options:['Ya','Tidak','Belum diketahui']}) + 
-      field('eligible','Outlet layak masuk program?','select',{required:true,blank:'Pilih hasil qualification',options:[{value:'Ya',label:'Ya — qualified'},{value:'Tidak',label:'Tidak qualified'}]}) + 
-      field('qualification_reason','Alasan / kebutuhan follow-up','textarea',{full:true,placeholder:'Jelaskan alasan bila tidak qualified, atau kebutuhan bila qualified.'});
-      
-    const posmSection = field('posm_type','Jenis POSM','select',{required:true,options:['Tidak ada','Spanduk','Poster','Banner','Sticker','Lainnya']}) + 
-      field('titik_posm','Titik POSM','select',{options:['Jalan Utama','Jalan Alternative']}) + 
-      field('condition_before','Kondisi POSM sebelum','select',{options:['Tidak ada','Baik','Rusak','Kotor','Tidak terlihat','Tidak sesuai standar','Lainnya']}) + 
-      field('posm_action','Tindakan POSM','select',{required:true,blank:'Pilih tindakan POSM',options:['Tidak ada perubahan','Pasang','Replace','Repair']}) + 
-      field('condition_after','Kondisi POSM setelah','select',{options:['Baik dan terlihat','Terpasang baru','Perlu follow-up','Tidak ada perubahan']}) + 
-      photoField('posm_before','Foto POSM Before','Wajib bila POSM dipasang, diganti, atau diperbaiki.') + 
-      photoField('posm_after','Foto POSM After','Wajib bila POSM dipasang, diganti, atau diperbaiki.') + 
-      field('owner_approval','Persetujuan owner untuk POSM','select',{options:['Ya','Tidak','Tidak diperlukan']}) + 
-      field('posm_owner_name','Nama owner / PIC approval','text',{placeholder:'Nama pemberi persetujuan'}) + 
-      field('posm_notes','Catatan POSM','textarea',{full:true,placeholder:'Lokasi pasang, ukuran, kondisi…'});
-      
-    const eduSection = field('education_done','Edukasi produk diberikan?','select',{required:true,blank:'Pilih status edukasi',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) + 
-      field('education_type','Materi edukasi','select',{options:['Product knowledge','Program promo','Product knowledge + promo','Demo komponen rem / steering','Tidak dilakukan']}) + 
-      field('product_knowledge','Materi / poin produk','textarea',{placeholder:'Fitur atau materi sesuai script TRW.'}) + 
-      field('promotion_explained','Program promosi dijelaskan?','select',{options:['Ya','Tidak','Tidak ada program aktif']}) + 
-      field('education_owner','Nama owner / PIC','text',{placeholder:'Penerima edukasi'}) + 
-      field('education_verified','Verifikasi owner','select',{options:['Ya','Tidak','Tidak tersedia']});
-      
-    const surveySection = field('survey_done','Survey TRW dilakukan?','select',{required:true,blank:'Pilih status survey',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) + 
-      field('current_brand','Brand kompetitor yang digunakan','text',{placeholder:'Contoh: Brand yang ditemukan'}) + 
-      field('current_volume','Volume stok / penjualan saat ini','text',{placeholder:'Estimasi unit / periode'}) + 
-      field('trw_stock','Stok TRW tersedia?','select',{options:['Ya','Tidak','Belum diketahui']}) + 
-      field('trw_price','Harga TRW (Rp)','number',{min:0,placeholder:'Opsional'}) + 
-      field('trw_campaign','Program / Campaign TRW','text',{placeholder:'Ada program free, tour, dsb?'}) + 
-      field('pembelian_product','Pembelian Product','select',{options:['Sales TRW','Grossir']}) + 
-      field('competitor_brand','Brand pembanding utama','text',{placeholder:'Nama brand kompetitor'}) + 
-      field('competitor_price','Harga kompetitor Netto (Rp)','text',{placeholder:'Termasuk potongan program'}) + 
-      field('purchase_intent','Purchase intent (1–5)','select',{options:[{value:'',label:'Pilih skor'},{value:'1',label:'1 — sangat rendah'},{value:'2',label:'2 — rendah'},{value:'3',label:'3 — sedang'},{value:'4',label:'4 — tinggi'},{value:'5',label:'5 — sangat tinggi'}]}) + 
-      field('barrier_switching','Hambatan berpindah brand','select',{options:['Harga','Ketersediaan stok','Kepercayaan / brand preference','Kualitas / performa','Belum ada kebutuhan','Lainnya','Tidak diketahui']}) + 
-      field('restock_frequency','Frekuensi restock','select',{options:['Mingguan','2 mingguan','Bulanan','Tidak rutin','Belum diketahui']}) + 
-      field('preferred_sku','SKU / kategori pilihan','text',{placeholder:'SKU atau kategori yang dicari'}) + 
-      field('brand_awareness','Awareness TRW','select',{options:['Tinggi','Sedang','Rendah','Belum tahu TRW']}) + 
-      field('quality_perception','Persepsi kualitas','select',{options:['Baik','Netral','Kurang','Belum pernah menggunakan']}) + 
-      field('price_perception','Persepsi harga','select',{options:['Kompetitif','Sesuai pasar','Terlalu tinggi','Belum diketahui']}) + 
-      field('unmet_demand','Kebutuhan yang belum terpenuhi','textarea',{full:true,placeholder:'SKU / stok / edukasi / program yang dibutuhkan'}) + 
-      field('market_insight','Insight dan rekomendasi','textarea',{full:true,placeholder:'Temuan lapangan dan follow-up yang disarankan'});
-      
-    return pageHead('LAPORAN FM','Kunjungan & qualification','Satu alur untuk field visit, klasifikasi outlet, POSM, edukasi, dan survey TRW.') + selectedOutletBlock() + (state.openAttendance ? '' : '<div class="notice warning">Lakukan Check In dengan foto + GPS sebelum mengirim laporan.</div>') + '<form data-form="visit" class="card"><div class="eyebrow">Outlet ID: ' + esc(state.selectedOutlet.outlet_id) + '</div>' + section('1','Kunjungan',visitSection,'Foto tampak depan dan tampak dalam menjadi evidence utama.') + section('2','Qualification outlet',qualSection,'Prospect belum menjadi outlet aktif sampai hasil verifikasi disimpan.') + section('3','Audit & POSM',posmSection,'Before/After diperlukan untuk pemasangan, penggantian, atau perbaikan POSM.') + section('4','Product education',eduSection,'Gunakan materi dan klaim produk yang telah disetujui TRW.') + section('5','Survey TRW & market insight',surveySection,'Pisahkan temuan stok, harga, kompetitor, persepsi, dan unmet demand.') + '<div class="notice warning small">Dengan menekan Simpan, sistem akan memproses seluruh form dan foto dalam satu transaksi untuk mempercepat waktu unggah. Pastikan koneksi internet stabil.</div><div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Batal</button><button type="submit" class="btn btn-yellow">Simpan laporan</button></div></form>';
-  }
+    // Section 1: Kunjungan (Tampak depan & tampak dalam toko, tanpa tanda tangan)
+    const visitSection = field('visit_type','Tipe kunjungan','select',{required:true,blank:'Pilih tipe kunjungan',options:['Existing','New / Prospect']}) +
+      field('visit_notes','Catatan kunjungan','textarea',{full:true,placeholder:'Kondisi outlet, kebutuhan, follow-up…'}) +
+      field('visit_contact','Nama owner / PIC','text',{placeholder:'Nama pemilik atau kepala mekanik'}) +
+      field('visit_phone','No. telepon PIC','tel',{placeholder:'Opsional'}) +
+      field('b2b_sales','Estimasi turnover / B2B sales','text',{placeholder:'Nominal atau catatan estimasi'}) +
+      photoField('outlet','Foto outlet / tampak depan toko','Wajib untuk bukti fisik dan seleksi toko.',true) +
+      photoField('outlet_inside','Foto tampak dalam toko','Wajib untuk melihat display dan stok toko.',true);
 
+    // Section 2: Qualification Outlet
+    const qualSection = field('outlet_type','Tipe outlet','select',{required:true,blank:'Pilih tipe outlet',options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) +
+      field('active_bays','Jumlah active bay (bengkel/workshop)','number',{min:0,placeholder:'Minimal 3 bila outlet dikualifikasikan sebagai bengkel/workshop'}) +
+      field('brake_steering_stock_confirmed','Stok aktif brake/steering/suspension terverifikasi?','select',{required:true,blank:'Verifikasi stok aktif',options:['Ya','Tidak','Belum diketahui']}) +
+      field('brake_brands_stocked','Merek ready stock apa saja?','text',{placeholder:'Contoh: TRW, Akebono, Bendix, Birkens, dll.'}) +
+      field('brand_monthly_volume','Estimasi pengambilan per bulan dari tiap brand','text',{placeholder:'Contoh: TRW 50 set, Brand B 30 set'}) +
+      field('segment_final','Klasifikasi SOW final','select',{required:true,blank:'Pilih klasifikasi setelah verifikasi',options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) +
+      field('brand_count','Jumlah brand yang dijual','number',{min:0,placeholder:'Contoh: 32'}) +
+      field('fastest_moving_brand','Paling fast moving merek apa?','text',{placeholder:'Nama brand paling laris di outlet ini'}) +
+      field('fastest_moving_pct','Berapa % cakupan brand fast moving?','text',{placeholder:'Contoh: 60%'}) +
+      field('purchase_history_signal','Pembelian kategori brake/steering dalam 6 bulan','select',{required:true,blank:'Pilih status riwayat pembelian',options:[{value:'Ya',label:'Ya, ada riwayat'},{value:'Tidak',label:'Tidak ada'},{value:'Belum diketahui',label:'Belum diketahui'}]}) +
+      field('brake_categories','Kategori produk yang dibeli','select',{options:['Semua (Hydraulic, Friction, Shock Absorber)','Hydraulic & Friction','Hydraulic saja','Friction saja','Shock Absorber & Linkage','Belum diketahui']}) +
+      field('trw_shelf_presence','Sudah mengenal TRW?','select',{required:true,blank:'Pilih status pengenalan TRW',options:['Pernah menggunakan','Pernah tau','Belum pernah']}) +
+      field('owner_engagement','Owner / kepala mekanik bersedia ikut edukasi?','select',{required:true,blank:'Pilih status owner',options:['Ya','Tidak','Perlu follow-up']}) +
+      field('sku_range','Range SKU / produk relevan','text',{placeholder:'Contoh: brake pad, disc rotor, brake fluid, tie rod'}) +
+      field('purchase_frequency','Frekuensi restock / pembelian','select',{options:['Mingguan','2 mingguan','Bulanan','Tidak rutin','Belum diketahui']}) +
+      field('eligible','Outlet layak masuk program?','select',{required:true,blank:'Pilih hasil qualification',options:[{value:'Ya',label:'Ya — qualified'},{value:'Tidak',label:'Tidak qualified'}]}) +
+      field('qualification_reason','Alasan / kebutuhan follow-up','textarea',{full:true,placeholder:'Jelaskan alasan bila tidak qualified, atau kebutuhan bila qualified.'});
+
+    // Section 3: Audit & POSM (Termasuk Titik POSM: Jalan Utama / Jalan Alternative)
+    const posmSection = field('posm_type','Jenis POSM','select',{required:true,options:['Tidak ada','Spanduk','Poster','Banner','Sticker','Lainnya']}) +
+      field('posm_location_type','Titik POSM','select',{options:['Jalan Utama','Jalan Alternative','Lainnya / Dalam Toko']}) +
+      field('condition_before','Kondisi POSM sebelum','select',{options:['Tidak ada','Baik','Rusak','Kotor','Tidak terlihat','Tidak sesuai standar','Lainnya']}) +
+      field('posm_action','Tindakan POSM','select',{required:true,blank:'Pilih tindakan POSM',options:['Tidak ada perubahan','Pasang','Replace','Repair']}) +
+      field('condition_after','Kondisi POSM setelah','select',{options:['Baik dan terlihat','Terpasang baru','Perlu follow-up','Tidak ada perubahan']}) +
+      photoField('posm_before','Foto POSM Before','Wajib bila POSM dipasang, diganti, atau diperbaiki.') +
+      photoField('posm_after','Foto POSM After','Wajib bila POSM dipasang, diganti, atau diperbaiki.') +
+      field('owner_approval','Persetujuan owner untuk POSM','select',{options:['Ya','Tidak','Tidak diperlukan']}) +
+      field('posm_owner_name','Nama owner / PIC approval','text',{placeholder:'Nama pemberi persetujuan'}) +
+      field('posm_notes','Catatan POSM','textarea',{full:true,placeholder:'Lokasi pasang, ukuran, kondisi…'});
+
+    // Section 4: Product Education
+    const eduSection = field('education_done','Edukasi produk diberikan?','select',{required:true,blank:'Pilih status edukasi',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) +
+      field('education_type','Materi edukasi','select',{options:['Product knowledge','Program promo','Product knowledge + promo','Demo komponen rem / steering','Tidak dilakukan']}) +
+      field('product_knowledge','Materi / poin produk','textarea',{placeholder:'Fitur atau materi sesuai script TRW.'}) +
+      field('promotion_explained','Program promosi dijelaskan?','select',{options:['Ya','Tidak','Tidak ada program aktif']}) +
+      field('education_owner','Nama owner / PIC','text',{placeholder:'Penerima edukasi'}) +
+      field('education_verified','Verifikasi owner','select',{options:['Ya','Tidak','Tidak tersedia']});
+
+    // Section 5: Survey TRW & Market Insight
+    const surveySection = field('survey_done','Survey TRW dilakukan?','select',{required:true,blank:'Pilih status survey',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) +
+      field('current_brand','Brand kompetitor yang digunakan','text',{placeholder:'Contoh: Brand yang ditemukan'}) +
+      field('current_volume','Volume stok / penjualan saat ini','text',{placeholder:'Estimasi unit / periode'}) +
+      field('trw_stock','Stok TRW tersedia?','select',{options:['Ya','Tidak','Belum diketahui']}) +
+      field('trw_price','Harga TRW (Rp)','number',{min:0,placeholder:'Opsional'}) +
+      field('trw_campaign_program','Campaign / Program TRW','textarea',{full:true,placeholder:'Check apakah ada campaign, program free, program tour, program pembelian, dll.'}) +
+      field('trw_purchase_source','Pembelian Product TRW','select',{options:['Sales TRW','Grossir','Distributor Resmi','Lainnya']}) +
+      field('competitor_brand','Brand pembanding utama','text',{placeholder:'Nama brand kompetitor'}) +
+      field('competitor_price','Harga kompetitor (Rp)','number',{min:0,placeholder:'Opsional'}) +
+      field('competitor_net_program','Harga Netto & Program Kompetitor','textarea',{full:true,placeholder:'Check harga netto dan apakah ada program tour / free gift / cashback dari kompetitor.'}) +
+      field('purchase_intent','Purchase intent (1–5)','select',{options:[{value:'',label:'Pilih skor'},{value:'1',label:'1 — sangat rendah'},{value:'2',label:'2 — rendah'},{value:'3',label:'3 — sedang'},{value:'4',label:'4 — tinggi'},{value:'5',label:'5 — sangat tinggi'}]}) +
+      field('barrier_switching','Hambatan berpindah brand','select',{options:['Harga','Ketersediaan stok','Kepercayaan / brand preference','Kualitas / performa','Belum ada kebutuhan','Lainnya','Tidak diketahui']}) +
+      field('restock_frequency','Frekuensi restock','select',{options:['Mingguan','2 mingguan','Bulanan','Tidak rutin','Belum diketahui']}) +
+      field('preferred_sku','SKU / kategori pilihan','text',{placeholder:'SKU atau kategori yang dicari'}) +
+      field('brand_awareness','Awareness TRW','select',{options:['Tinggi','Sedang','Rendah','Belum tahu TRW']}) +
+      field('quality_perception','Persepsi kualitas','select',{options:['Baik','Netral','Kurang','Belum pernah menggunakan']}) +
+      field('price_perception','Persepsi harga','select',{options:['Kompetitif','Sesuai pasar','Terlalu tinggi','Belum diketahui']}) +
+      field('unmet_demand','Kebutuhan yang belum terpenuhi','textarea',{full:true,placeholder:'SKU / stok / edukasi / program yang dibutuhkan'}) +
+      field('market_insight','Insight dan rekomendasi','textarea',{full:true,placeholder:'Temuan lapangan dan follow-up yang disarankan'});
+
+    return pageHead('LAPORAN FM','Kunjungan & qualification','Satu alur untuk field visit, klasifikasi outlet, POSM, edukasi, dan survey TRW.') + selectedOutletBlock() + (state.openAttendance ? '' : '<div class="notice warning">Lakukan Check In dengan foto + GPS sebelum mengirim laporan.</div>') + '<form data-form="visit" class="card"><div class="eyebrow">Outlet ID: ' + esc(state.selectedOutlet.outlet_id) + '</div>' + section('1','Kunjungan',visitSection,'Foto tampak depan & tampak dalam toko menjadi evidence utama seleksi toko.') + section('2','Qualification outlet',qualSection,'Prospect belum menjadi outlet aktif sampai hasil verifikasi disimpan. Klasifikasi final: Grosir, Semi Grosir, atau Retail.') + section('3','Audit & POSM',posmSection,'Before/After diperlukan untuk pemasangan, penggantian, atau perbaikan POSM.') + section('4','Product education',eduSection,'Gunakan materi dan klaim produk yang telah disetujui TRW.') + section('5','Survey TRW & market insight',surveySection,'Pisahkan temuan stok, harga netto, program/campaign, kompetitor, persepsi, dan unmet demand.') + '<div class="notice warning small">Dengan menekan Simpan, aplikasi merekam koordinat perangkat dan waktu pengiriman. Data yang tersimpan offline akan disinkronkan kemudian dengan timestamp lapangan yang dicatat perangkat.</div><div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Batal</button><button type="submit" class="btn btn-yellow">Simpan laporan</button></div></form>';
+  }
   function activationFormPage() {
     if (state.user.role !== 'SPG' && !['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
     if (!state.selectedOutlet) return pageHead('SPG','Aktivasi outlet','Pilih outlet qualified terlebih dahulu.') + '<div class="card"><button class="btn btn-primary" data-act="nav" data-page="outlets">Cari outlet qualified</button></div>';
@@ -812,7 +928,6 @@
     cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>');
     cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
-    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="client-dashboard"><strong>Client Dashboard</strong><small>Lihat tampilan eksekutif & peta live.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
     cards.push('<button class="action-tile' + (role === 'CLIENT' ? ' client-logout-tile' : '') + '" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
@@ -858,41 +973,47 @@
     return result.id || evidenceId;
   }
 
-  
   async function submitVisitForm(form) {
     if (!state.openAttendance || !state.openAttendance.attendance_id) throw new Error('Lakukan Check In dengan foto dan GPS sebelum menyimpan visit.');
     if (!state.selectedOutlet) throw new Error('Pilih outlet terlebih dahulu.');
-    
     const visitPhoto = formPhoto('outlet');
-    if (!visitPhoto) throw new Error('Foto outlet / tampak depan wajib diambil.');
+    if (!visitPhoto) throw new Error('Foto outlet / tampak depan toko wajib diambil.');
     const insidePhoto = formPhoto('outlet_inside');
-    if (!insidePhoto) throw new Error('Foto tampak dalam toko wajib diambil.');
-    
     const eligible = fieldVal(form,'eligible') === 'Ya';
     if (eligible && !fieldVal(form,'visit_contact')) throw new Error('Isi nama pemilik / PIC sebelum outlet dinyatakan qualified.');
     if (eligible && (!Number.isInteger(Number(fieldVal(form,'sku_count'))) || Number(fieldVal(form,'sku_count')) < 1)) throw new Error('Jumlah SKU harus angka bulat minimal 1.');
     if (eligible && !['Grosir','Semi Grosir','Retail'].includes(fieldVal(form,'segment_final'))) throw new Error('Pilih klasifikasi final Grosir, Semi Grosir, atau Retail.');
     if (eligible && fieldVal(form,'purchase_history_signal') !== 'Ya') throw new Error('Qualification memerlukan bukti sinyal pembelian dalam 6 bulan terakhir.');
     if (eligible && fieldVal(form,'owner_engagement') !== 'Ya') throw new Error('Owner/kepala mekanik harus bersedia menerima edukasi.');
-    
     const selectedOutletType = fieldVal(form,'outlet_type');
     if (eligible && /bengkel|workshop/i.test(selectedOutletType) && Number(fieldVal(form,'active_bays')) < 3) throw new Error('Bengkel/workshop harus memiliki minimal 3 active bay.');
     if (eligible && !/bengkel|workshop/i.test(selectedOutletType) && fieldVal(form,'brake_steering_stock_confirmed') !== 'Ya') throw new Error('Stok aktif brake/steering/suspension harus terverifikasi.');
     if (eligible && !fieldVal(form,'sku_range')) throw new Error('Isi range SKU/produk yang relevan.');
     if (!eligible && !fieldVal(form,'qualification_reason')) throw new Error('Jelaskan alasan outlet tidak qualified atau belum siap.');
-    
     const posmAction = fieldVal(form, 'posm_action') || 'Tidak ada perubahan';
     const beforePhoto = formPhoto('posm_before'); const afterPhoto = formPhoto('posm_after');
     if (posmAction !== 'Tidak ada perubahan' && (!beforePhoto || !afterPhoto)) throw new Error('Ambil foto POSM Before dan After.');
-    
+
+    toast('Membaca lokasi GPS…');
     const geo = await getGeo(); const outlet = state.selectedOutlet;
-    const visitId = uid('VIS');
-    
-    toast('Mengirim laporan (ini membutuhkan waktu sebentar)...');
-    
+    if (!state.visitFlow) {
+      state.visitFlow = {
+        visitId: uid('VIS'),
+        qualificationId: uid('QLF'),
+        posmId: uid('POS'),
+        educationId: uid('EDU'),
+        surveyId: uid('SRV'),
+        competitorId: uid('CMP'),
+        outletEvidenceId: uid('EVD'),
+        outletInsideEvidenceId: uid('EVD'),
+        posmBeforeEvidenceId: uid('EVD'),
+        posmAfterEvidenceId: uid('EVD')
+      };
+    }
+    const ids = state.visitFlow;
+
     const payload = {
-      action: 'saveFullVisit',
-      visit_id: visitId,
+      visit_id: ids.visitId,
       outlet_id: outlet.outlet_id,
       visit_type: fieldVal(form,'visit_type'),
       attendance_id: state.openAttendance.attendance_id,
@@ -901,16 +1022,25 @@
       lng: geo.lng,
       accuracy: geo.accuracy,
       notes: fieldVal(form,'visit_notes'),
-      photo_front: { dataUrl: visitPhoto.dataUrl, mimeType: 'image/jpeg' },
-      photo_inside: { dataUrl: insidePhoto.dataUrl, mimeType: 'image/jpeg' },
+      status: 'SUBMITTED',
+      outlet_photo: visitPhoto ? { dataUrl: visitPhoto.dataUrl, mimeType: 'image/jpeg' } : null,
+      outlet_inside_photo: insidePhoto ? { dataUrl: insidePhoto.dataUrl, mimeType: 'image/jpeg' } : null,
+      outlet_evidence_id: ids.outletEvidenceId,
+      outlet_inside_evidence_id: ids.outletInsideEvidenceId,
       qualification: {
+        qualification_id: ids.qualificationId,
         outlet_type: fieldVal(form,'outlet_type'),
         active_bays: fieldVal(form,'active_bays'),
         brake_steering_stock_confirmed: fieldVal(form,'brake_steering_stock_confirmed'),
+        brake_brands_stocked: fieldVal(form,'brake_brands_stocked'),
+        brand_monthly_volume: fieldVal(form,'brand_monthly_volume'),
         segment_final: fieldVal(form,'segment_final'),
         brand_count: fieldVal(form,'brand_count'),
+        fastest_moving_brand: fieldVal(form,'fastest_moving_brand'),
+        fastest_moving_pct: fieldVal(form,'fastest_moving_pct'),
         sku_count: fieldVal(form,'sku_count'),
         purchase_history_signal: fieldVal(form,'purchase_history_signal'),
+        brake_categories: fieldVal(form,'brake_categories'),
         owner_engagement: fieldVal(form,'owner_engagement'),
         sku_range: fieldVal(form,'sku_range'),
         purchase_frequency: fieldVal(form,'purchase_frequency'),
@@ -920,37 +1050,45 @@
         contact_name: fieldVal(form,'visit_contact'),
         contact_phone: fieldVal(form,'visit_phone'),
         b2b_sales: fieldVal(form,'b2b_sales'),
-        brake_brands_detail: fieldVal(form,'brake_brands_detail'),
-        fastmoving_brand_detail: fieldVal(form,'fastmoving_brand_detail'),
-        categories_checked: Array.from($$('[name="categories_checked"]:checked')).map(cb => cb.value).join(', ')
+        segment_indicative: outlet.segment_indicative || ''
       },
       posm: {
+        posm_id: ids.posmId,
         posm_type: fieldVal(form,'posm_type'),
+        posm_location_type: fieldVal(form,'posm_location_type'),
         condition_before: fieldVal(form,'condition_before'),
-        posm_action: posmAction,
+        action: posmAction,
         condition_after: fieldVal(form,'condition_after'),
+        before_photo: beforePhoto ? { dataUrl: beforePhoto.dataUrl, mimeType: 'image/jpeg' } : null,
+        after_photo: afterPhoto ? { dataUrl: afterPhoto.dataUrl, mimeType: 'image/jpeg' } : null,
+        before_evidence_id: ids.posmBeforeEvidenceId,
+        after_evidence_id: ids.posmAfterEvidenceId,
         owner_approval: fieldVal(form,'owner_approval') === 'Ya',
-        posm_owner_name: fieldVal(form,'posm_owner_name'),
-        titik_posm: fieldVal(form,'titik_posm'),
+        owner_name: fieldVal(form,'posm_owner_name'),
         notes: fieldVal(form,'posm_notes')
       },
       education: {
+        education_id: ids.educationId,
         education_done: fieldVal(form,'education_done') === 'Ya',
         education_type: fieldVal(form,'education_type'),
         product_knowledge: fieldVal(form,'product_knowledge'),
         promotion_explained: fieldVal(form,'promotion_explained'),
-        education_owner: fieldVal(form,'education_owner'),
-        education_verified: fieldVal(form,'education_verified') === 'Ya'
+        owner_name: fieldVal(form,'education_owner'),
+        verified: fieldVal(form,'education_verified') === 'Ya'
       },
       survey: {
+        survey_id: ids.surveyId,
         survey_done: fieldVal(form,'survey_done') === 'Ya',
         purchase_intent: fieldVal(form,'purchase_intent'),
         current_brand: fieldVal(form,'current_brand'),
         current_volume: fieldVal(form,'current_volume'),
         trw_stock: fieldVal(form,'trw_stock'),
         trw_price: fieldVal(form,'trw_price'),
+        trw_campaign_program: fieldVal(form,'trw_campaign_program'),
+        trw_purchase_source: fieldVal(form,'trw_purchase_source'),
         competitor_brand: fieldVal(form,'competitor_brand'),
         competitor_price: fieldVal(form,'competitor_price'),
+        competitor_net_program: fieldVal(form,'competitor_net_program'),
         barrier_switching: fieldVal(form,'barrier_switching'),
         restock_frequency: fieldVal(form,'restock_frequency'),
         preferred_sku: fieldVal(form,'preferred_sku'),
@@ -958,23 +1096,48 @@
         quality_perception: fieldVal(form,'quality_perception'),
         price_perception: fieldVal(form,'price_perception'),
         unmet_demand: fieldVal(form,'unmet_demand'),
-        market_insight: fieldVal(form,'market_insight'),
-        trw_campaign: fieldVal(form,'trw_campaign'),
-        pembelian_product: fieldVal(form,'pembelian_product')
+        insight: fieldVal(form,'market_insight')
+      },
+      competitor: {
+        competitor_id: ids.competitorId,
+        category: fieldVal(form,'outlet_type'),
+        sku: fieldVal(form,'preferred_sku')
       }
     };
-    
-    if (beforePhoto) payload.photo_posm_before = { dataUrl: beforePhoto.dataUrl, mimeType: 'image/jpeg' };
-    if (afterPhoto) payload.photo_posm_after = { dataUrl: afterPhoto.dataUrl, mimeType: 'image/jpeg' };
 
-    const result = await apiPost('saveFullVisit', payload);
-    
-    state.photos = {}; state.inputType = ''; state.page = 'home';
-    await refreshAll(false);
-    toast(result.queued ? 'Laporan masuk antrean offline.' : 'Laporan kunjungan berhasil disimpan dalam 1 transaksi.', 'ok');
+    // Optimistic UI: Update local state immediately so user is never stuck
+    if (state.user.role === 'FM' && state.fmRoute) {
+      const item = (state.fmRoute.items || []).find((i) => String(i.outlet_id) === String(outlet.outlet_id));
+      if (item) {
+        item.status = 'COMPLETED';
+        item.visit_count = Number(item.visit_count || 0) + 1;
+      }
+      if (state.fmRoute.stats) {
+        state.fmRoute.stats.completed = Number(state.fmRoute.stats.completed || 0) + 1;
+        state.fmRoute.stats.evidence = Number(state.fmRoute.stats.evidence || 0) + (insidePhoto ? 2 : 1);
+      }
+      metaPut('fmRoute', state.fmRoute);
+    }
+
+    state.visitFlow = null;
+    state.photos = {};
+    state.signatureData = '';
+    state.signatureDrawn = false;
+    state.signatureCapturedAt = '';
+    state.inputType = '';
+    state.page = 'home';
     render();
-  }
+    toast('Laporan kunjungan disimpan!', 'ok');
 
+    // Single background/queued call
+    apiPost('saveFullVisit', payload).then((res) => {
+      toast(res && res.queued ? 'Laporan masuk antrean offline.' : 'Laporan kunjungan berhasil disimpan ke server.', 'ok');
+      refreshAll(false);
+    }).catch((err) => {
+      console.warn('saveFullVisit error:', err);
+      toast(err.message || 'Gagal menyimpan laporan.', 'bad');
+    });
+  }
 
   async function submitActivationForm(form) {
     if (!state.openAttendance) throw new Error('Lakukan Check In dengan foto dan GPS sebelum aktivasi.');
@@ -1049,37 +1212,48 @@
     } catch (error) { showError(error); }
   }
 
-    async function refreshAll(showToast = true) {
+  async function refreshAll(showToast = true) {
     if (!state.token || !state.user) return;
     try {
-      if (!navigator.onLine) {
+      if (!state.outletList || !state.outletList.length) {
         state.dashboard = await metaGet('dashboard') || state.dashboard;
         state.outletList = await metaGet('outlets') || state.outletList;
         state.reports = await metaGet('reports') || state.reports;
         state.attendance = await metaGet('attendance') || state.attendance;
         if (state.user.role === 'FM') state.fmRoute = await metaGet('fmRoute') || state.fmRoute;
+        render();
+      }
+
+      if (!navigator.onLine) {
         await updateQueueState();
         render();
         return;
       }
-      
-      const boot = await apiGet('bootstrap');
-      state.dashboard = boot.dashboard;
-      state.outletList = boot.outlets.items || [];
-      state.attendance = boot.attendance;
-      if (boot.fmRoute) state.fmRoute = boot.fmRoute;
-      
-      await Promise.all([
-        metaPut('dashboard', state.dashboard),
-        metaPut('outlets', state.outletList),
-        metaPut('attendance', state.attendance)
-      ]);
-      if (boot.fmRoute) await metaPut('fmRoute', boot.fmRoute);
-      
+      const requests = [apiGet('dashboard'), apiGet('outlets', { limit: 500 }), apiGet('reports', { limit: 100 }), apiGet('attendance')];
+      if (state.user.role === 'FM') requests.push(apiGet('fmRoute'));
+      if (['ADMIN','PM','TL'].includes(state.user.role)) {
+        requests.push(apiGet(state.user.role === 'ADMIN' ? 'users' : 'team').catch(() => ({ items: [] })));
+        requests.push(apiGet('beatPlan').catch(() => ({ items: [] })));
+      }
+      const results = await Promise.all(requests);
+      const dashboard = results[0], outlets = results[1], reports = results[2], attendance = results[3];
+      const fmRoute = state.user.role === 'FM' ? results[4] : null;
+
+      if (['ADMIN','PM','TL'].includes(state.user.role)) {
+        const uIdx = state.user.role === 'FM' ? 5 : 4;
+        const bIdx = state.user.role === 'FM' ? 6 : 5;
+        if (results[uIdx] && results[uIdx].items) { state.users = results[uIdx].items; await metaPut('users', state.users); }
+        if (results[bIdx] && results[bIdx].items) { state.beatPlan = results[bIdx].items; await metaPut('beatPlan', state.beatPlan); }
+      }
+
+      await Promise.all([metaPut('dashboard', dashboard), metaPut('outlets', outlets.items || []), metaPut('reports', reports), metaPut('attendance', attendance)]);
+      if (fmRoute) await metaPut('fmRoute', fmRoute);
+      state.dashboard = dashboard; state.outletList = outlets.items || []; state.reports = reports; state.attendance = attendance;
+      if (fmRoute) state.fmRoute = fmRoute;
       const queue = await queueAll();
       const pendingCheckouts = new Set(queue.filter((i) => i.action === 'checkout').map((i) => i.payload.attendance_id));
       const pendingCheckins = queue.filter((i) => i.action === 'checkin').slice(-1)[0];
-      let open = state.attendance.openAttendance || null;
+      let open = attendance.openAttendance || null;
       if (open && pendingCheckouts.has(open.attendance_id)) open = null;
       if (!open && pendingCheckins && !pendingCheckouts.has(pendingCheckins.payload.attendance_id)) open = { attendance_id: pendingCheckins.payload.attendance_id, outlet_id: pendingCheckins.payload.outlet_id || '', checkin_at: pendingCheckins.payload.at, status: 'OPEN', user_id: state.user.user_id, pending: true };
       if (!open) {
@@ -1089,11 +1263,6 @@
       state.openAttendance = open;
       if (open) { localStorage.setItem(STORE.openAttendance, JSON.stringify(open)); await metaPut('openAttendance', open); }
       else { localStorage.removeItem(STORE.openAttendance); await metaDelete('openAttendance'); }
-      
-      // Lazy load reports, users, beatplan later if needed
-      if (['ADMIN','PM','TL'].includes(state.user.role)) { try { const users = await apiGet(state.user.role === 'ADMIN' ? 'users' : 'team'); state.users = users.items || []; await metaPut('users', state.users); } catch (_) {} }
-      if (['ADMIN','PM','TL'].includes(state.user.role)) { try { const beats = await apiGet('beatPlan'); state.beatPlan = beats.items || []; await metaPut('beatPlan', state.beatPlan); } catch (_) {} }
-      
       if (showToast) toast('Data terbaru berhasil dimuat.', 'ok');
       render();
     } catch (error) {
@@ -1248,6 +1417,15 @@
         }
       }
       else if (act === 'outlet-filter') { state.outletFilter = button.dataset.filter || 'all'; render(); }
+      else if (act === 'map-filter') {
+        currentMapFilter = button.dataset.filter || 'all';
+        initDashboardMap();
+        const chips = document.querySelectorAll('[data-act="map-filter"]');
+        chips.forEach((c) => {
+          if (c.dataset.filter === currentMapFilter) c.classList.add('active');
+          else c.classList.remove('active');
+        });
+      }
       else if (act === 'choose-outlet') selectOutlet(button.dataset.id);
       else if (act === 'fm-checkin') {
         const id = button.dataset.outlet || '';
