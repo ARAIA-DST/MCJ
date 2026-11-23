@@ -442,6 +442,7 @@
       case 'users': page = usersPage(); break;
       case 'beatplan': page = beatPlanPage(); break;
       case 'createOutlet': page = createOutletPage(); break;
+      case 'client-dashboard': page = clientHomePage(); break;
       case 'more': page = morePage(); break;
       default: page = homePage();
     }
@@ -589,9 +590,7 @@
         const mapEl = document.getElementById('client-live-map');
         if (!mapEl) return;
         const map = L.map(mapEl).setView([-6.200000, 106.816666], 11);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-          attribution: '© OpenStreetMap © CARTO'
-        }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
         
         const pts = dashboard.mapPoints.filter(p => p.lat && p.lng);
         if(pts.length > 0) {
@@ -813,6 +812,7 @@
     cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>');
     cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
+    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="client-dashboard"><strong>Client Dashboard</strong><small>Lihat tampilan eksekutif & peta live.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
     cards.push('<button class="action-tile' + (role === 'CLIENT' ? ' client-logout-tile' : '') + '" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
