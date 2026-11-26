@@ -419,6 +419,62 @@
     }
     return '<div class="' + cls + '"><label>' + esc(label) + (options.required ? ' <span aria-hidden="true">*</span>' : '') + '</label>' + control + hint + '</div>';
   }
+  
+  function multiSelectDropdownHtml(id, name, label, options, config = {}) {
+    const required = config.required ? ' <span aria-hidden="true">*</span>' : '';
+    const hint = config.hint ? '<p class="form-note">' + esc(config.hint) + '</p>' : '';
+    const placeholder = esc(config.placeholder || 'Pilih opsi...');
+    const hasSearch = config.searchable !== false;
+
+    let itemsHtml = '';
+    if (config.groups) {
+      itemsHtml = config.groups.map((g) => {
+        const groupHead = '<div class="ms-group-header">' + esc(g.group) + '</div>';
+        const groupItems = g.items.map((item) => {
+          const val = typeof item === 'string' ? item : item.value;
+          const lbl = typeof item === 'string' ? item : item.label;
+          return '<label class="ms-item-row" data-search="' + esc(lbl.toLowerCase()) + '">' +
+            '<input type="checkbox" name="' + esc(name) + '" value="' + esc(val) + '" data-label="' + esc(lbl) + '" data-ms-target="' + esc(id) + '">' +
+            '<span>' + esc(lbl) + '</span>' +
+          '</label>';
+        }).join('');
+        return groupHead + groupItems;
+      }).join('');
+    } else {
+      itemsHtml = (options || []).map((item) => {
+        const val = typeof item === 'string' ? item : item.value;
+        const lbl = typeof item === 'string' ? item : item.label;
+        return '<label class="ms-item-row" data-search="' + esc(lbl.toLowerCase()) + '">' +
+          '<input type="checkbox" name="' + esc(name) + '" value="' + esc(val) + '" data-label="' + esc(lbl) + '" data-ms-target="' + esc(id) + '">' +
+          '<span>' + esc(lbl) + '</span>' +
+        '</label>';
+      }).join('');
+    }
+
+    return '<div class="field ' + (config.full ? 'field-full' : '') + ' ms-dropdown-container" id="container-' + esc(id) + '" data-ms-id="' + esc(id) + '">' +
+      '<label>' + esc(label) + required + '</label>' +
+      hint +
+      '<button type="button" class="ms-trigger" id="trigger-' + esc(id) + '" data-act="toggle-ms" data-target="' + esc(id) + '">' +
+        '<span class="ms-trigger-text is-empty" id="label-' + esc(id) + '">' + placeholder + '</span>' +
+        '<span class="ms-trigger-badge" id="badge-' + esc(id) + '" style="display:none;">0</span>' +
+        '<span class="ms-arrow">▾</span>' +
+      '</button>' +
+      '<div class="ms-menu" id="menu-' + esc(id) + '" style="display:none;">' +
+        (hasSearch ? '<input type="search" class="ms-search-input" id="search-' + esc(id) + '" placeholder="Cari..." data-ms-search="' + esc(id) + '">' : '') +
+        '<div class="ms-actions-bar">' +
+          '<button type="button" class="ms-btn-link" data-act="ms-clear" data-target="' + esc(id) + '">Kosongkan</button>' +
+          '<button type="button" class="ms-btn-link" data-act="ms-select-all" data-target="' + esc(id) + '">Pilih Semua</button>' +
+        '</div>' +
+        '<div class="ms-list" id="list-' + esc(id) + '">' +
+          itemsHtml +
+        '</div>' +
+        '<div class="ms-footer">' +
+          '<button type="button" class="btn btn-small btn-yellow btn-block" data-act="close-ms" data-target="' + esc(id) + '">Selesai</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   function photoField(key, label, hint, required = false) {
     return '<div class="field ' + (required ? 'field-full' : '') + '"><label>' + esc(label) + (required ? ' <span aria-hidden="true">*</span>' : '') + '</label><input class="photo-input" type="file" name="photo_' + esc(key) + '" data-photo="' + esc(key) + '" accept="image/*" capture="environment"' + (required ? ' required' : '') + '><div class="form-note">' + esc(hint || 'Foto dikompres otomatis sebelum disimpan.') + '</div><div data-preview-for="' + esc(key) + '"></div></div>';
   }
@@ -944,17 +1000,21 @@
       field('visit_notes','1.7 Catatan Kunjungan','textarea',{full:true,placeholder:'Kondisi outlet, kebutuhan, follow-up…'});
 
     // Section 2: Kualifikasi Outlet (2.1 s/d 2.17)
-    const brandCheckboxes = ['TRW', 'Akebono', 'Bendix', 'Birkens', 'MK KASHIYAMA', 'SANIKO', 'MONRO', 'Belum diketahui'].map((b) =>
-      '<label class="brand-check-chip"><input type="checkbox" name="stocked_brand" value="' + esc(b) + '"><span>' + esc(b) + '</span></label>'
-    ).join('');
-
     const skuRangeCheckboxes = ['Braking Component', 'Linkage', 'Suspension', 'Tidak Pernah Menjual'].map((s) =>
       '<label class="brand-check-chip"><input type="checkbox" name="sku_range_item" value="' + esc(s) + '"><span>' + esc(s) + '</span></label>'
     ).join('');
 
+    const stockBrandOptions = ['TRW', 'Akebono', 'Bendix', 'Birkens', 'MK KASHIYAMA', 'SANIKO', 'MONRO', 'Belum diketahui'];
+    const stockedBrandsDropdown = multiSelectDropdownHtml('ms-stocked-brands', 'stocked_brand', '2.3 Stok Aktif Brake / Steering / Suspension?', stockBrandOptions, {
+      required: true,
+      full: true,
+      placeholder: 'Pilih ready stock merek...',
+      hint: 'Centang semua merek ready stock yang tersedia di toko.'
+    });
+
     const qualSection = field('outlet_type','2.1 Tipe Outlet','select',{required:true,blank:'Pilih tipe outlet',options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) +
       field('active_bays','2.2 Jumlah Active Bay (Khusus bengkel / workshop)','number',{min:0,placeholder:'Minimal 3 bila dikualifikasikan sebagai bengkel/workshop'}) +
-      '<div class="field field-full"><label>2.3 Stok Aktif Brake / Steering / Suspension? <span aria-hidden="true">*</span></label><p class="form-note">Centang merek ready stock yang tersedia di toko:</p><div class="brand-check-group">' + brandCheckboxes + '</div></div>' +
+      stockedBrandsDropdown +
       field('brand_monthly_volume','2.4 Estimasi Pengambilan per Bulan (per Brand)','textarea',{full:true,placeholder:'Estimasi pengambilan tiap brand (contoh: TRW 50 set, Akebono 40 set, Bendix 30 set...)'}) +
       field('segment_final','2.5 Klasifikasi Final SOW','select',{required:true,blank:'Pilih klasifikasi setelah verifikasi',options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) +
       field('brand_count','2.6 Jumlah Brand yang Dijual','number',{min:0,placeholder:'Contoh: 25'}) +
@@ -971,7 +1031,15 @@
       field('qualification_reason','2.17 Alasan Kualifikasi / Catatan Follow-up','textarea',{full:true,placeholder:'Wajib diisi bila tidak qualified, atau catatan kebutuhan bila qualified.'});
 
     // Section 3: Audit & POSM (3.1 s/d 3.8)
-    const posmSection = field('posm_type','3.1 Jenis POSM Terpasang','select',{required:true,options:['Tidak ada','Spanduk','Poster','Banner','Sticker','Lainnya']}) +
+    const posmOptions = ['Tidak ada', 'Spanduk', 'Poster', 'Banner', 'Sticker', 'Lainnya'];
+    const posmTypeDropdown = multiSelectDropdownHtml('ms-posm-type', 'posm_type', '3.1 Jenis POSM Terpasang', posmOptions, {
+      required: true,
+      full: true,
+      placeholder: 'Pilih jenis POSM terpasang...',
+      hint: 'Centang semua jenis POSM yang ditemukan terpasang di toko.'
+    });
+
+    const posmSection = posmTypeDropdown +
       '<div id="wrap-posm-allowed" class="conditional-block">' + field('posm_allowed','3.2 Diperbolehkan Pasang POSM Baru? (Jika tidak ada POSM)','select',{options:['Ya','Tidak']}) + '</div>' +
       '<div id="wrap-posm-location" class="conditional-block">' + field('posm_location_type','3.3 Titik / Lokasi POSM','select',{options:['Jalan Utama','Jalan Alternative','Lainnya / Dalam Toko']}) + '</div>' +
       '<div id="wrap-posm-before" class="conditional-block">' + field('condition_before','3.4 Kondisi POSM Sebelum','select',{options:['Baik','Rusak','Kotor','Tidak terlihat','Tidak sesuai standar','Lainnya']}) + '</div>' +
@@ -993,24 +1061,19 @@
       '</div>';
 
     // Section 5: Survey TRW & Market Insight (5.1 s/d 5.13)
-    const makeCompetitorChips = (categoryTitle, brands) => {
-      const chips = brands.map((b) => '<label class="brand-check-chip"><input type="checkbox" name="comp_brand" value="' + esc(b) + '"><span>' + esc(b) + '</span></label>').join('');
-      return '<div style="margin-bottom:8px;"><strong style="font-size:12px;color:#c00;">' + esc(categoryTitle) + ':</strong><div class="brand-check-group" style="margin-top:4px;">' + chips + '</div></div>';
-    };
+    const compGroups = [
+      { group: 'Hydraulic', items: ['AISIN', 'SEIKEN', 'AKEBONO', 'ADVICS', 'MIYACO', 'MANDO', 'TBK', 'FIC/JKC'] },
+      { group: 'Friction', items: ['AKEBONO', 'BENDIX', 'BOSCH', 'NISSHINBO', 'FBL', 'ATE', 'TEXTAR', 'PAGID', 'JFBK', 'NOZUMI'] },
+      { group: 'Shock Absorber', items: ['KYB', 'MONROE', 'MANDO', 'TOKICO', 'MASUMA', 'KJ SHOCK'] },
+      { group: 'Linkage', items: ['555 Sankei', 'AISIN', 'MASUMA', 'RBI', 'LKS', 'MANDO'] }
+    ];
 
-    const hydraulicBrands = ['AISIN', 'SEIKEN', 'AKEBONO', 'ADVICS', 'MIYACO', 'MANDO', 'TBK', 'FIC/JKC'];
-    const frictionBrands = ['AKEBONO', 'BENDIX', 'BOSCH', 'NISSHINBO', 'FBL', 'ATE', 'TEXTAR', 'PAGID', 'JFBK', 'NOZUMI'];
-    const shockBrands = ['KYB', 'MONROE', 'MANDO', 'TOKICO', 'MASUMA', 'KJ SHOCK'];
-    const linkageBrands = ['555 Sankei', 'AISIN', 'MASUMA', 'RBI', 'LKS', 'MANDO'];
-
-    const categorizedCompetitorHtml = '<div class="field field-full"><label>5.1 Brand Kompetitor yang Digunakan Toko</label>' +
-      '<p class="form-note">Centang merek kompetitor yang ditemukan di toko:</p>' +
-      makeCompetitorChips('Hydraulic', hydraulicBrands) +
-      makeCompetitorChips('Friction', frictionBrands) +
-      makeCompetitorChips('Shock Absorber', shockBrands) +
-      makeCompetitorChips('Linkage', linkageBrands) +
-      field('current_brand','Brand Kompetitor Lainnya (Teks Bebas)','text',{placeholder:'Ketik merek kompetitor lain jika ada'}) +
-    '</div>';
+    const categorizedCompetitorHtml = multiSelectDropdownHtml('ms-comp-brands', 'comp_brand', '5.1 Brand Kompetitor yang Digunakan Toko', null, {
+      groups: compGroups,
+      full: true,
+      placeholder: 'Pilih merek kompetitor yang digunakan/dijual toko...',
+      hint: 'Centang semua merek kompetitor yang ditemukan dari kategori Hydraulic, Friction, Shock Absorber, dan Linkage.'
+    }) + field('current_brand','Brand Kompetitor Lainnya (Teks Bebas)','text',{placeholder:'Ketik merek kompetitor lain jika ada (opsional)'});
 
     const surveySection = categorizedCompetitorHtml +
       field('current_volume','5.2 Volume Stok / Penjualan Saat Ini','text',{placeholder:'Estimasi unit / set per bulan'}) +
@@ -1031,12 +1094,46 @@
     const scriptTrigger = '<script>(function(){' +
       'function setupConditionals(){' +
         'const f = document.querySelector("form[data-form=\"visit\"]"); if(!f) return;' +
+        'const updateMsLabels = () => {' +
+          '["ms-stocked-brands", "ms-posm-type", "ms-comp-brands"].forEach(id => {' +
+            'const container = document.getElementById("container-" + id); if(!container) return;' +
+            'const checkboxes = Array.from(container.querySelectorAll("input[type=\"checkbox\"]:checked"));' +
+            'const label = document.getElementById("label-" + id);' +
+            'const badge = document.getElementById("badge-" + id);' +
+            'const count = checkboxes.length;' +
+            'if (label) {' +
+              'if (count === 0) {' +
+                'label.textContent = id === "ms-stocked-brands" ? "Pilih ready stock merek..." : id === "ms-posm-type" ? "Pilih jenis POSM terpasang..." : "Pilih merek kompetitor...";' +
+                'label.classList.add("is-empty");' +
+              '} else if (count === 1) {' +
+                'label.textContent = checkboxes[0].dataset.label || checkboxes[0].value;' +
+                'label.classList.remove("is-empty");' +
+              '} else if (count === 2) {' +
+                'label.textContent = checkboxes.map(c => c.dataset.label || c.value).join(", ");' +
+                'label.classList.remove("is-empty");' +
+              '} else {' +
+                'label.textContent = checkboxes.slice(0, 2).map(c => c.dataset.label || c.value).join(", ") + " (+" + (count - 2) + " lainnya)";' +
+                'label.classList.remove("is-empty");' +
+              '}' +
+            '}' +
+            'if (badge) {' +
+              'badge.textContent = String(count);' +
+              'badge.style.display = count > 0 ? "inline-block" : "none";' +
+            '}' +
+            'container.querySelectorAll(".ms-item-row").forEach(row => {' +
+              'const cb = row.querySelector("input[type=\"checkbox\"]");' +
+              'if (cb) row.classList.toggle("is-checked", cb.checked);' +
+            '});' +
+          '});' +
+        '};' +
         'const bind = () => {' +
+          'updateMsLabels();' +
           'const pHist = f.elements["purchase_history_signal"]; const bCat = document.getElementById("wrap-brake-cat");' +
           'if (pHist && bCat) bCat.style.display = (pHist.value === "Ya") ? "block" : "none";' +
-          'const posmType = f.elements["posm_type"]; const posmAllowWrap = document.getElementById("wrap-posm-allowed");' +
+          'const checkedPosm = Array.from(f.querySelectorAll("input[name=\"posm_type\"]:checked")).map(c => c.value);' +
+          'const isNoPosm = checkedPosm.length === 0 || checkedPosm.includes("Tidak ada");' +
+          'const posmAllowWrap = document.getElementById("wrap-posm-allowed");' +
           'const posmLoc = document.getElementById("wrap-posm-location"); const posmBef = document.getElementById("wrap-posm-before");' +
-          'const isNoPosm = posmType && posmType.value === "Tidak ada";' +
           'if (posmAllowWrap) posmAllowWrap.style.display = isNoPosm ? "block" : "none";' +
           'if (posmLoc) posmLoc.style.display = (!isNoPosm || (f.elements["posm_allowed"] && f.elements["posm_allowed"].value === "Ya")) ? "block" : "none";' +
           'if (posmBef) posmBef.style.display = !isNoPosm ? "block" : "none";' +
@@ -1045,7 +1142,23 @@
           'const intent = f.elements["purchase_intent"]; const barrierWrap = document.getElementById("wrap-barrier-switching");' +
           'if (intent && barrierWrap) barrierWrap.style.display = (intent.value === "1" || intent.value === "2") ? "block" : "none";' +
         '};' +
-        'f.addEventListener("change", bind); bind();' +
+        'f.addEventListener("change", (e) => {' +
+          'if (e.target && e.target.name === "posm_type") {' +
+            'if (e.target.value === "Tidak ada" && e.target.checked) {' +
+              'f.querySelectorAll("input[name=\"posm_type\"]").forEach(c => { if (c.value !== "Tidak ada") c.checked = false; });' +
+            '} else if (e.target.value !== "Tidak ada" && e.target.checked) {' +
+              'f.querySelectorAll("input[name=\"posm_type\"]").forEach(c => { if (c.value === "Tidak ada") c.checked = false; });' +
+            '}' +
+          '}' +
+          'if (e.target && e.target.name === "stocked_brand") {' +
+            'if (e.target.value === "Belum diketahui" && e.target.checked) {' +
+              'f.querySelectorAll("input[name=\"stocked_brand\"]").forEach(c => { if (c.value !== "Belum diketahui") c.checked = false; });' +
+            '} else if (e.target.value !== "Belum diketahui" && e.target.checked) {' +
+              'f.querySelectorAll("input[name=\"stocked_brand\"]").forEach(c => { if (c.value === "Belum diketahui") c.checked = false; });' +
+            '}' +
+          '}' +
+          'bind();' +
+        '}); bind();' +
       '}; setTimeout(setupConditionals, 50);' +
     '})();</script>';
 
@@ -1233,6 +1346,10 @@
     }
     const ids = state.visitFlow;
 
+    // POSM validations
+    const checkedPosmTypes = Array.from(form.querySelectorAll('input[name="posm_type"]:checked')).map((c) => c.value);
+    const posmTypeVal = checkedPosmTypes.length ? checkedPosmTypes.join(', ') : 'Tidak ada';
+
     const payload = {
       visit_id: ids.visitId,
       outlet_id: outlet.outlet_id,
@@ -1276,7 +1393,7 @@
       },
       posm: {
         posm_id: ids.posmId,
-        posm_type: fieldVal(form, 'posm_type'),
+        posm_type: posmTypeVal,
         posm_allowed: fieldVal(form, 'posm_allowed'),
         posm_location_type: fieldVal(form, 'posm_location_type'),
         condition_before: fieldVal(form, 'condition_before'),
@@ -1700,6 +1817,50 @@
       else if (act === 'refresh') await refreshAll(true);
       else if (act === 'refresh-reports') { await loadReports(); render(); toast('Laporan diperbarui.','ok'); }
       else if (act === 'refresh-users') { await loadUsers(); render(); }
+      else if (act === 'toggle-ms') {
+        const targetId = button.dataset.target;
+        const menu = document.getElementById('menu-' + targetId);
+        const trigger = document.getElementById('trigger-' + targetId);
+        if (!menu || !trigger) return;
+        const isOpen = menu.style.display !== 'none';
+        // Close all menus first
+        document.querySelectorAll('.ms-menu').forEach(m => m.style.display = 'none');
+        document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('is-active'));
+        if (!isOpen) {
+          menu.style.display = 'flex';
+          trigger.classList.add('is-active');
+          const searchInp = menu.querySelector('.ms-search-input');
+          if (searchInp) setTimeout(() => searchInp.focus(), 60);
+        }
+      }
+      else if (act === 'close-ms') {
+        const targetId = button.dataset.target;
+        const menu = document.getElementById('menu-' + targetId);
+        const trigger = document.getElementById('trigger-' + targetId);
+        if (menu) menu.style.display = 'none';
+        if (trigger) trigger.classList.remove('is-active');
+      }
+      else if (act === 'ms-clear') {
+        const targetId = button.dataset.target;
+        const container = document.getElementById('container-' + targetId);
+        if (!container) return;
+        container.querySelectorAll('input[type="checkbox"]').forEach(c => { c.checked = false; });
+        const form = container.closest('form');
+        if (form) form.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      else if (act === 'ms-select-all') {
+        const targetId = button.dataset.target;
+        const container = document.getElementById('container-' + targetId);
+        if (!container) return;
+        container.querySelectorAll('.ms-item-row').forEach(row => {
+          if (row.style.display !== 'none') {
+            const cb = row.querySelector('input[type="checkbox"]');
+            if (cb && cb.value !== 'Tidak ada' && cb.value !== 'Belum diketahui') cb.checked = true;
+          }
+        });
+        const form = container.closest('form');
+        if (form) form.dispatchEvent(new Event('change', { bubbles: true }));
+      }
       else if (act === 'beat-select-20') {
         const form = document.querySelector('form[data-form="beatPlan"]');
         if (!form) return;
@@ -1813,6 +1974,39 @@
       else if (act === 'toggle-user') { const active = button.dataset.active === 'true'; if (!confirm((active ? 'Aktifkan' : 'Nonaktifkan') + ' akun ini?')) return; await apiPost('setUserActive',{user_id:button.dataset.id,active:active},{allowQueue:false}); await loadUsers(); render(); toast('Status akun diperbarui.','ok'); }
       else if (act === 'reset-password') { const password = prompt('Password baru (minimal 8 karakter):'); if (password === null) return; if (password.length < 8) throw new Error('Password minimal 8 karakter.'); await apiPost('resetUserPassword',{user_id:button.dataset.id,new_password:password},{allowQueue:false}); toast('Password direset. Berikan melalui kanal aman.','ok'); }
     } catch (error) { showError(error); }
+  });
+
+    // Close multi-select menus on click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.ms-dropdown-container')) {
+      document.querySelectorAll('.ms-menu').forEach(m => m.style.display = 'none');
+      document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('is-active'));
+    }
+  });
+
+  // Filter multi-select search input
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.classList.contains('ms-search-input')) {
+      const targetId = e.target.dataset.msSearch;
+      const list = document.getElementById('list-' + targetId);
+      if (!list) return;
+      const q = e.target.value.trim().toLowerCase();
+      const rows = list.querySelectorAll('.ms-item-row');
+      rows.forEach(r => {
+        const match = !q || (r.dataset.search && r.dataset.search.includes(q));
+        r.style.display = match ? 'flex' : 'none';
+      });
+      // Handle group headers
+      list.querySelectorAll('.ms-group-header').forEach(h => {
+        let next = h.nextElementSibling;
+        let anyVisible = false;
+        while (next && next.classList.contains('ms-item-row')) {
+          if (next.style.display !== 'none') { anyVisible = true; break; }
+          next = next.nextElementSibling;
+        }
+        h.style.display = anyVisible ? 'block' : 'none';
+      });
+    }
   });
 
   document.addEventListener('submit', handleSubmit);
