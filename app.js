@@ -752,7 +752,7 @@
     if (!route) {
       routeContent = '<div class="card fm-empty"><strong>Memuat rencana kunjungan…</strong><p>Rute hari ini sedang diambil dari sistem.</p></div>';
     } else if (!items.length) {
-      routeContent = '<div class="card fm-empty"><strong>Belum ada rencana kunjungan hari ini</strong><p>Rute outlet ditetapkan oleh TL/Admin. Hubungi TL jika Anda belum menerima penugasan.</p></div>';
+      routeContent = '<div class="card fm-empty"><strong>Belum ada penugasan rencana kunjungan hari ini</strong><p>Belum ada rute terjadwal dari TL/Admin. Anda tetap dapat melakukan kunjungan lapangan secara mandiri menggunakan modul <b>DAFTARKAN OUTLET BARU (NOO) & SURVEY</b> di atas.</p></div>';
     } else {
       const hasOtherOpen = Boolean(active);
       routeContent = '<div class="fm-route-list">' + items.map((item, index) => {
@@ -1114,7 +1114,7 @@
     const role = state.user.role;
     const cards = [];
     if (role !== 'CLIENT') cards.push('<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>');
-    cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 12 karakter.</small></button>');
+    cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 8 karakter.</small></button>');
     cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
@@ -1128,7 +1128,7 @@
 
   function usersPage() {
     if (state.user.role !== 'ADMIN') return '<div class="card">Akses hanya untuk Admin.</div>';
-    const form = field('user_full_name','Nama lengkap','text',{required:true}) + field('user_username','Username','text',{required:true,placeholder:'Contoh: fm.jakarta01'}) + field('user_role','Role','select',{required:true,options:['FM','SPG','TL','PM','ADMIN','CLIENT']}) + field('user_phone','Nomor telepon','tel',{placeholder:'Opsional'}) + field('user_password','Password awal','password',{required:true,hint:'Minimal 12 karakter. Berikan melalui kanal yang aman.'});
+    const form = field('user_full_name','Nama lengkap','text',{required:true}) + field('user_username','Username','text',{required:true,placeholder:'Contoh: fm.jakarta01'}) + field('user_role','Role','select',{required:true,options:['FM','SPG','TL','PM','ADMIN','CLIENT']}) + field('user_phone','Nomor telepon','tel',{placeholder:'Opsional'}) + field('user_password','Password awal','password',{required:true,hint:'Minimal 8 karakter. Berikan melalui kanal yang aman.'});
     const list = state.users.length ? '<div class="table-wrap"><table><thead><tr><th>Nama / Username</th><th>Role</th><th>Status</th><th>Aksi</th></tr></thead><tbody>' + state.users.map((u) => '<tr><td><strong>' + esc(u.full_name) + '</strong><div class="tiny muted">' + esc(u.username) + '</div><div class="tiny muted">Last login: ' + esc(fmtDateTime(u.last_login)) + '</div></td><td>' + esc(u.role) + '</td><td>' + (u.active ? '<span class="tag green">Aktif</span>' : '<span class="tag red">Nonaktif</span>') + '</td><td><button class="btn btn-small btn-plain" data-act="toggle-user" data-id="' + esc(u.user_id) + '" data-active="' + (u.active ? 'false' : 'true') + '">' + (u.active ? 'Nonaktifkan' : 'Aktifkan') + '</button><button class="btn btn-small btn-soft" data-act="reset-password" data-id="' + esc(u.user_id) + '">Reset password</button></td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada user.</div>';
     return pageHead('ADMIN','Manajemen user','Buat akun dengan role yang tepat dan nonaktifkan akun yang sudah tidak digunakan.') + '<div class="card"><h2>Buat user baru</h2><form data-form="createUser"><div class="field-grid">' + form + '</div><button type="submit" class="btn btn-yellow btn-block">Buat akun</button></form></div><div class="card"><div class="card-head"><div><h2>Daftar user</h2><p class="muted small">Password dan hash tidak pernah ditampilkan.</p></div><button class="btn btn-small btn-plain" data-act="refresh-users">Refresh</button></div>' + list + '</div>';
   }
@@ -1409,7 +1409,7 @@
       const isNoo = Boolean(options && options.isNoo);
       const fmOutletId = isNoo ? 'NOO_PENDING' : (state.user.role === 'FM' ? (kind === 'checkout' ? (state.openAttendance.outlet_id || '') : (state.selectedOutlet && state.selectedOutlet.outlet_id)) : '');
       if (state.user.role === 'FM' && kind === 'checkin' && !fmOutletId && !isNoo) throw new Error('Pilih outlet dari Rencana Kunjungan atau gunakan menu NOO sebelum Check In.');
-      const payload = { attendance_id: attendanceId, evidence_id: evidenceId, outlet_id: fmOutletId || (state.selectedOutlet ? state.selectedOutlet.outlet_id : ''), lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: at, photo: { dataUrl: photo.dataUrl, mimeType: 'image/jpeg' } };
+      const payload = { attendance_id: attendanceId, evidence_id: evidenceId, outlet_id: fmOutletId || (state.selectedOutlet ? state.selectedOutlet.outlet_id : ''), is_noo: isNoo, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: at, photo: { dataUrl: photo.dataUrl, mimeType: 'image/jpeg' } };
       const result = await apiPost(kind, payload);
       if (kind === 'checkin') {
         state.openAttendance = { attendance_id: attendanceId, outlet_id: payload.outlet_id || '', checkin_at: at, status: 'OPEN', user_id: state.user.user_id, pending: !!result.queued };
@@ -1580,7 +1580,7 @@
           throw new Error('Mohon lengkapi nama outlet, kota, alamat, dan nama PIC.');
         }
 
-        await apiPost('createOutlet', newOutlet, { allowQueue: false });
+        await apiPost('createOutlet', Object.assign({}, newOutlet, { is_noo: true }), { allowQueue: false });
         state.outletList.unshift(newOutlet);
         await metaPut('outlets', state.outletList);
 
@@ -1588,6 +1588,26 @@
           state.openAttendance.outlet_id = outletId;
           await metaPut('openAttendance', state.openAttendance);
           localStorage.setItem(STORE.openAttendance, JSON.stringify(state.openAttendance));
+        }
+
+        if (state.fmRoute) {
+          state.fmRoute.items = state.fmRoute.items || [];
+          state.fmRoute.items.unshift({
+            outlet_id: outletId,
+            outlet_name: newOutlet.outlet_name,
+            city: newOutlet.city,
+            area: newOutlet.area,
+            address: newOutlet.address,
+            type: newOutlet.type,
+            segment_final: newOutlet.segment_final,
+            priority: newOutlet.priority,
+            status: 'IN_PROGRESS',
+            sequence: 1,
+            checkin_at: state.openAttendance ? state.openAttendance.checkin_at : new Date().toISOString()
+          });
+          state.fmRoute.stats = state.fmRoute.stats || { visits: 0, completed: 0, interactions: 0, evidence: 0 };
+          state.fmRoute.stats.visits = state.fmRoute.items.length;
+          await metaPut('fmRoute', state.fmRoute);
         }
 
         state.selectedOutlet = newOutlet;
@@ -1599,8 +1619,25 @@
         await apiPost('createOutlet',{outlet_id:uid('OUT'),outlet_name:fieldVal(form,'new_outlet_name'),city:fieldVal(form,'new_outlet_city'),area:fieldVal(form,'new_outlet_area'),address:fieldVal(form,'new_outlet_address'),type:fieldVal(form,'new_outlet_type'),segment_final:fieldVal(form,'new_outlet_segment'),priority:fieldVal(form,'new_outlet_priority'),contact_name:fieldVal(form,'new_outlet_contact'),contact_phone:fieldVal(form,'new_outlet_phone')},{allowQueue:false});
         await refreshAll(false); state.page='outlets'; toast('Outlet berhasil ditambahkan.','ok'); render();
       } else if (type === 'beatPlan') {
-        await apiPost('saveBeatPlan',{beat_id:uid('BEAT'),date:fieldVal(form,'beat_date'),week:fieldVal(form,'beat_week'),user_id:fieldVal(form,'beat_user'),outlet_id:fieldVal(form,'beat_outlet'),sequence:fieldVal(form,'beat_sequence'),notes:fieldVal(form,'beat_notes'),status:'PLANNED',planned:true},{allowQueue:false});
-        form.reset(); await loadBeatPlan(); toast('Beat plan tersimpan.','ok'); render();
+        const checked = Array.from(form.querySelectorAll('input[name="beat_outlet_ids"]:checked')).map((c) => c.value);
+        if (!checked.length) throw new Error('Pilih minimal 1 outlet (maksimal 20 outlet sekaligus).');
+        if (checked.length > 20) throw new Error('Maksimal 20 outlet per penugasan rute sekaligus. Anda memilih ' + checked.length + ' outlet.');
+        
+        await apiPost('saveBeatPlan', {
+          date: fieldVal(form, 'beat_date'),
+          week: fieldVal(form, 'beat_week'),
+          user_id: fieldVal(form, 'beat_user'),
+          outlet_ids: checked,
+          sequence: 1,
+          notes: fieldVal(form, 'beat_notes'),
+          status: 'PLANNED',
+          planned: true
+        }, { allowQueue: false });
+        
+        form.reset();
+        await loadBeatPlan();
+        toast('Berhasil menetapkan ' + checked.length + ' outlet untuk rencana kunjungan FM!', 'ok');
+        render();
       }
     } catch (error) { showError(error); }
     finally { setBusy(form, false); }
@@ -1629,7 +1666,7 @@
   }
   async function changePasswordPrompt() {
     const old = prompt('Masukkan password saat ini:'); if (old === null) return;
-    const next = prompt('Masukkan password baru (minimal 12 karakter):'); if (next === null) return;
+    const next = prompt('Masukkan password baru (minimal 8 karakter):'); if (next === null) return;
     const confirm = prompt('Ulangi password baru:'); if (confirm === null) return;
     if (next !== confirm) { toast('Konfirmasi password tidak sama.', 'bad'); return; }
     try { await apiPost('changePassword',{current_password:old,new_password:next},{allowQueue:false}); toast('Password berhasil diganti.','ok'); }
@@ -1663,6 +1700,45 @@
       else if (act === 'refresh') await refreshAll(true);
       else if (act === 'refresh-reports') { await loadReports(); render(); toast('Laporan diperbarui.','ok'); }
       else if (act === 'refresh-users') { await loadUsers(); render(); }
+      else if (act === 'beat-select-20') {
+        const form = document.querySelector('form[data-form="beatPlan"]');
+        if (!form) return;
+        const visibleRows = Array.from(form.querySelectorAll('.beat-outlet-row')).filter(r => r.style.display !== 'none');
+        form.querySelectorAll('input[name="beat_outlet_ids"]').forEach(c => {
+          c.checked = false;
+          const r = c.closest('.beat-outlet-row');
+          if (r) r.classList.remove('is-selected');
+        });
+        const toCheck = visibleRows.slice(0, 20);
+        toCheck.forEach(r => {
+          const cb = r.querySelector('input[name="beat_outlet_ids"]');
+          if (cb) {
+            cb.checked = true;
+            r.classList.add('is-selected');
+          }
+        });
+        const badge = document.getElementById('beat-counter-tag');
+        if (badge) {
+          badge.textContent = toCheck.length + ' / 20 Outlet Terpilih';
+          badge.className = 'tag green beat-counter-tag';
+        }
+        toast(toCheck.length + ' outlet berhasil dipilih.', 'ok');
+      }
+      else if (act === 'beat-clear-selection') {
+        const form = document.querySelector('form[data-form="beatPlan"]');
+        if (!form) return;
+        form.querySelectorAll('input[name="beat_outlet_ids"]').forEach(c => {
+          c.checked = false;
+          const r = c.closest('.beat-outlet-row');
+          if (r) r.classList.remove('is-selected');
+        });
+        const badge = document.getElementById('beat-counter-tag');
+        if (badge) {
+          badge.textContent = '0 / 20 Outlet Terpilih';
+          badge.className = 'tag yellow beat-counter-tag';
+        }
+        toast('Pilihan outlet dikosongkan.', 'ok');
+      }
       else if (act === 'refresh-beats') { await loadBeatPlan(); render(); }
       else if (act === 'checkin') await attendanceAction('checkin');
       else if (act === 'checkout') await attendanceAction('checkout');
@@ -1735,7 +1811,7 @@
       else if (act === 'export-records') await exportRecords();
       else if (act === 'change-password') await changePasswordPrompt();
       else if (act === 'toggle-user') { const active = button.dataset.active === 'true'; if (!confirm((active ? 'Aktifkan' : 'Nonaktifkan') + ' akun ini?')) return; await apiPost('setUserActive',{user_id:button.dataset.id,active:active},{allowQueue:false}); await loadUsers(); render(); toast('Status akun diperbarui.','ok'); }
-      else if (act === 'reset-password') { const password = prompt('Password baru (minimal 12 karakter):'); if (password === null) return; if (password.length < 12) throw new Error('Password minimal 12 karakter.'); await apiPost('resetUserPassword',{user_id:button.dataset.id,new_password:password},{allowQueue:false}); toast('Password direset. Berikan melalui kanal aman.','ok'); }
+      else if (act === 'reset-password') { const password = prompt('Password baru (minimal 8 karakter):'); if (password === null) return; if (password.length < 8) throw new Error('Password minimal 8 karakter.'); await apiPost('resetUserPassword',{user_id:button.dataset.id,new_password:password},{allowQueue:false}); toast('Password direset. Berikan melalui kanal aman.','ok'); }
     } catch (error) { showError(error); }
   });
 

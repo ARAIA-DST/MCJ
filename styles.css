@@ -377,3 +377,83 @@ tbody tr:hover td { background: #fcfcfa; }
 .conditional-block { background: #f9fbf9; border: 1px solid #e2e7e1; border-radius: 12px; padding: 14px 16px; margin: 10px 0; }
 .conditional-block.hidden { display: none; }
 .conditional-label { font-size: 11px; font-weight: 750; color: #707771; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.4px; }
+
+/* Batch Beat Plan Outlet Selector */
+.beat-outlet-selector {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 14px;
+  margin-top: 10px;
+}
+.beat-selector-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.beat-selector-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.beat-outlets-scroll {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.beat-outlet-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.beat-outlet-row:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.beat-outlet-row.is-selected {
+  background: #fff5f5;
+  border-color: #feb2b2;
+}
+.beat-outlet-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary, #d90429);
+  flex-shrink: 0;
+}
+.beat-outlet-info {
+  flex: 1;
+  min-width: 0;
+}
+.beat-outlet-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.beat-outlet-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.beat-counter-tag {
+  font-weight: 700;
+  font-size: 12px;
+}
+
