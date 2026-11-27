@@ -545,7 +545,162 @@
     APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.4<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
     updateNetworkBadge();
     setupSignatureCanvas();
+    setupVisitConditionals();
+    setupBeatPlanner();
     initDashboardMap();
+  }
+
+  function setupVisitConditionals() {
+    const f = document.querySelector('form[data-form="visit"]');
+    if (!f || f.dataset.condBound === '1') return;
+    f.dataset.condBound = '1';
+
+    const updateMsLabels = () => {
+      ['ms-stocked-brands', 'ms-posm-type', 'ms-comp-brands'].forEach((id) => {
+        const container = document.getElementById('container-' + id);
+        if (!container) return;
+        const checkboxes = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'));
+        const label = document.getElementById('label-' + id);
+        const badge = document.getElementById('badge-' + id);
+        const count = checkboxes.length;
+        if (label) {
+          if (count === 0) {
+            label.textContent = id === 'ms-stocked-brands' ? 'Pilih ready stock merek...' : id === 'ms-posm-type' ? 'Pilih jenis POSM terpasang...' : 'Pilih merek kompetitor...';
+            label.classList.add('is-empty');
+          } else if (count === 1) {
+            label.textContent = checkboxes[0].dataset.label || checkboxes[0].value;
+            label.classList.remove('is-empty');
+          } else if (count === 2) {
+            label.textContent = checkboxes.map((c) => c.dataset.label || c.value).join(', ');
+            label.classList.remove('is-empty');
+          } else {
+            label.textContent = checkboxes.slice(0, 2).map((c) => c.dataset.label || c.value).join(', ') + ' (+' + (count - 2) + ' lainnya)';
+            label.classList.remove('is-empty');
+          }
+        }
+        if (badge) {
+          badge.textContent = String(count);
+          badge.style.display = count > 0 ? 'inline-block' : 'none';
+        }
+        container.querySelectorAll('.ms-item-row').forEach((row) => {
+          const cb = row.querySelector('input[type="checkbox"]');
+          if (cb) row.classList.toggle('is-checked', cb.checked);
+        });
+      });
+    };
+
+    const bind = () => {
+      updateMsLabels();
+      const checkedBrands = Array.from(f.querySelectorAll('input[name="stocked_brand"]:checked')).map((c) => c.value);
+      const brandVolMap = [
+        { brand: 'TRW', key: 'vol_TRW' },
+        { brand: 'Akebono', key: 'vol_Akebono' },
+        { brand: 'Bendix', key: 'vol_Bendix' },
+        { brand: 'Birkens', key: 'vol_Birkens' },
+        { brand: 'MK KASHIYAMA', key: 'vol_MK_KASHIYAMA' },
+        { brand: 'SANIKO', key: 'vol_SANIKO' },
+        { brand: 'MONRO', key: 'vol_MONRO' }
+      ];
+      let anyBrandVol = false;
+      brandVolMap.forEach((item) => {
+        const active = checkedBrands.includes(item.brand);
+        if (active) anyBrandVol = true;
+        const w = document.getElementById('wrap-' + item.key);
+        const inp = f.elements[item.key];
+        if (w) w.style.display = active ? 'block' : 'none';
+        if (inp) inp.required = active;
+      });
+      const outerVolWrap = document.getElementById('wrap-brand-monthly-volume');
+      if (outerVolWrap) outerVolWrap.style.display = anyBrandVol ? 'block' : 'none';
+
+      const pHist = f.elements['purchase_history_signal'];
+      const bCat = document.getElementById('wrap-brake-cat');
+      if (pHist && bCat) bCat.style.display = (pHist.value === 'Ya') ? 'block' : 'none';
+
+      const checkedPosm = Array.from(f.querySelectorAll('input[name="posm_type"]:checked')).map((c) => c.value);
+      const isNoPosm = checkedPosm.length === 0 || checkedPosm.includes('Tidak ada');
+      const posmAllowWrap = document.getElementById('wrap-posm-allowed');
+      const posmLoc = document.getElementById('wrap-posm-location');
+      const posmBef = document.getElementById('wrap-posm-before');
+      if (posmAllowWrap) posmAllowWrap.style.display = isNoPosm ? 'block' : 'none';
+      if (posmLoc) posmLoc.style.display = (!isNoPosm || (f.elements['posm_allowed'] && f.elements['posm_allowed'].value === 'Ya')) ? 'block' : 'none';
+      if (posmBef) posmBef.style.display = !isNoPosm ? 'block' : 'none';
+
+      const eduDone = f.elements['education_done'];
+      const eduWrap = document.getElementById('wrap-edu-details');
+      if (eduDone && eduWrap) eduWrap.style.display = (eduDone.value === 'Ya') ? 'block' : 'none';
+
+      const intent = f.elements['purchase_intent'];
+      const barrierWrap = document.getElementById('wrap-barrier-switching');
+      if (intent && barrierWrap) barrierWrap.style.display = (intent.value === '1' || intent.value === '2') ? 'block' : 'none';
+    };
+
+    f.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'posm_type') {
+        if (e.target.value === 'Tidak ada' && e.target.checked) {
+          f.querySelectorAll('input[name="posm_type"]').forEach((c) => { if (c.value !== 'Tidak ada') c.checked = false; });
+        } else if (e.target.value !== 'Tidak ada' && e.target.checked) {
+          f.querySelectorAll('input[name="posm_type"]').forEach((c) => { if (c.value === 'Tidak ada') c.checked = false; });
+        }
+      }
+      if (e.target && e.target.name === 'stocked_brand') {
+        if (e.target.value === 'Belum diketahui' && e.target.checked) {
+          f.querySelectorAll('input[name="stocked_brand"]').forEach((c) => { if (c.value !== 'Belum diketahui') c.checked = false; });
+        } else if (e.target.value !== 'Belum diketahui' && e.target.checked) {
+          f.querySelectorAll('input[name="stocked_brand"]').forEach((c) => { if (c.value === 'Belum diketahui') c.checked = false; });
+        }
+      }
+      bind();
+    });
+
+    bind();
+  }
+
+  function setupBeatPlanner() {
+    const root = document.querySelector('form[data-form="beatPlan"]');
+    if (!root || root.dataset.beatBound === '1') return;
+    root.dataset.beatBound = '1';
+    const search = document.getElementById('beat-outlet-search');
+    const citySel = document.getElementById('beat-city-filter');
+    const badge = document.getElementById('beat-counter-tag');
+    const rows = Array.from(root.querySelectorAll('.beat-outlet-row'));
+
+    const updateCount = () => {
+      const checked = root.querySelectorAll('input[name="beat_outlet_ids"]:checked');
+      if (badge) {
+        badge.textContent = checked.length + ' / 20 Outlet Terpilih';
+        badge.className = 'tag ' + (checked.length > 20 ? 'red' : checked.length > 0 ? 'green' : 'yellow') + ' beat-counter-tag';
+      }
+    };
+
+    const filterRows = () => {
+      const q = search ? search.value.trim().toLowerCase() : '';
+      const city = citySel ? citySel.value : '';
+      rows.forEach((r) => {
+        const matchesSearch = !q || r.dataset.search.includes(q);
+        const matchesCity = !city || r.dataset.city.includes(city);
+        r.style.display = (matchesSearch && matchesCity) ? 'flex' : 'none';
+      });
+    };
+
+    if (search) search.addEventListener('input', filterRows);
+    if (citySel) citySel.addEventListener('change', filterRows);
+
+    root.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'beat_outlet_ids') {
+        const parentRow = e.target.closest('.beat-outlet-row');
+        if (parentRow) parentRow.classList.toggle('is-selected', e.target.checked);
+        const checked = root.querySelectorAll('input[name="beat_outlet_ids"]:checked');
+        if (checked.length > 20) {
+          e.target.checked = false;
+          if (parentRow) parentRow.classList.remove('is-selected');
+          toast('Maksimal penugasan sekaligus adalah 20 outlet.', 'bad');
+        }
+        updateCount();
+      }
+    });
+
+    updateCount();
   }
 
   let currentLeafletMap = null;
@@ -1111,98 +1266,6 @@
       field('price_perception','5.12c Persepsi Harga TRW','select',{options:['Kompetitif','Sesuai pasar','Terlalu tinggi','Belum diketahui']}) +
       field('unmet_demand','5.13 Unmet Demand & Market Insight','textarea',{full:true,placeholder:'Kebutuhan SKU / ketersediaan barang / masukan toko yang belum terpenuhi…'});
 
-    const scriptTrigger = '<script>(function(){' +
-      'function setupConditionals(){' +
-        'const f = document.querySelector("form[data-form=\"visit\"]"); if(!f) return;' +
-        'const updateMsLabels = () => {' +
-          '["ms-stocked-brands", "ms-posm-type", "ms-comp-brands"].forEach(id => {' +
-            'const container = document.getElementById("container-" + id); if(!container) return;' +
-            'const checkboxes = Array.from(container.querySelectorAll("input[type=\"checkbox\"]:checked"));' +
-            'const label = document.getElementById("label-" + id);' +
-            'const badge = document.getElementById("badge-" + id);' +
-            'const count = checkboxes.length;' +
-            'if (label) {' +
-              'if (count === 0) {' +
-                'label.textContent = id === "ms-stocked-brands" ? "Pilih ready stock merek..." : id === "ms-posm-type" ? "Pilih jenis POSM terpasang..." : "Pilih merek kompetitor...";' +
-                'label.classList.add("is-empty");' +
-              '} else if (count === 1) {' +
-                'label.textContent = checkboxes[0].dataset.label || checkboxes[0].value;' +
-                'label.classList.remove("is-empty");' +
-              '} else if (count === 2) {' +
-                'label.textContent = checkboxes.map(c => c.dataset.label || c.value).join(", ");' +
-                'label.classList.remove("is-empty");' +
-              '} else {' +
-                'label.textContent = checkboxes.slice(0, 2).map(c => c.dataset.label || c.value).join(", ") + " (+" + (count - 2) + " lainnya)";' +
-                'label.classList.remove("is-empty");' +
-              '}' +
-            '}' +
-            'if (badge) {' +
-              'badge.textContent = String(count);' +
-              'badge.style.display = count > 0 ? "inline-block" : "none";' +
-            '}' +
-            'container.querySelectorAll(".ms-item-row").forEach(row => {' +
-              'const cb = row.querySelector("input[type=\"checkbox\"]");' +
-              'if (cb) row.classList.toggle("is-checked", cb.checked);' +
-            '});' +
-          '});' +
-        '};' +
-        'const bind = () => {' +
-          'updateMsLabels();' +
-          'const checkedBrands = Array.from(f.querySelectorAll("input[name=\\"stocked_brand\\"]:checked")).map(c => c.value);' +
-          'const brandVolMap = [' +
-            '{ brand: "TRW", key: "vol_TRW" },' +
-            '{ brand: "Akebono", key: "vol_Akebono" },' +
-            '{ brand: "Bendix", key: "vol_Bendix" },' +
-            '{ brand: "Birkens", key: "vol_Birkens" },' +
-            '{ brand: "MK KASHIYAMA", key: "vol_MK_KASHIYAMA" },' +
-            '{ brand: "SANIKO", key: "vol_SANIKO" },' +
-            '{ brand: "MONRO", key: "vol_MONRO" }' +
-          '];' +
-          'let anyBrandVol = false;' +
-          'brandVolMap.forEach(item => {' +
-            'const active = checkedBrands.includes(item.brand);' +
-            'if (active) anyBrandVol = true;' +
-            'const w = document.getElementById("wrap-" + item.key);' +
-            'const inp = f.elements[item.key];' +
-            'if (w) w.style.display = active ? "block" : "none";' +
-            'if (inp) inp.required = active;' +
-          '});' +
-          'const outerVolWrap = document.getElementById("wrap-brand-monthly-volume");' +
-          'if (outerVolWrap) outerVolWrap.style.display = anyBrandVol ? "block" : "none";' +
-          'const pHist = f.elements["purchase_history_signal"]; const bCat = document.getElementById("wrap-brake-cat");' +
-          'if (pHist && bCat) bCat.style.display = (pHist.value === "Ya") ? "block" : "none";' +
-          'const checkedPosm = Array.from(f.querySelectorAll("input[name=\"posm_type\"]:checked")).map(c => c.value);' +
-          'const isNoPosm = checkedPosm.length === 0 || checkedPosm.includes("Tidak ada");' +
-          'const posmAllowWrap = document.getElementById("wrap-posm-allowed");' +
-          'const posmLoc = document.getElementById("wrap-posm-location"); const posmBef = document.getElementById("wrap-posm-before");' +
-          'if (posmAllowWrap) posmAllowWrap.style.display = isNoPosm ? "block" : "none";' +
-          'if (posmLoc) posmLoc.style.display = (!isNoPosm || (f.elements["posm_allowed"] && f.elements["posm_allowed"].value === "Ya")) ? "block" : "none";' +
-          'if (posmBef) posmBef.style.display = !isNoPosm ? "block" : "none";' +
-          'const eduDone = f.elements["education_done"]; const eduWrap = document.getElementById("wrap-edu-details");' +
-          'if (eduDone && eduWrap) eduWrap.style.display = (eduDone.value === "Ya") ? "block" : "none";' +
-          'const intent = f.elements["purchase_intent"]; const barrierWrap = document.getElementById("wrap-barrier-switching");' +
-          'if (intent && barrierWrap) barrierWrap.style.display = (intent.value === "1" || intent.value === "2") ? "block" : "none";' +
-        '};' +
-        'f.addEventListener("change", (e) => {' +
-          'if (e.target && e.target.name === "posm_type") {' +
-            'if (e.target.value === "Tidak ada" && e.target.checked) {' +
-              'f.querySelectorAll("input[name=\"posm_type\"]").forEach(c => { if (c.value !== "Tidak ada") c.checked = false; });' +
-            '} else if (e.target.value !== "Tidak ada" && e.target.checked) {' +
-              'f.querySelectorAll("input[name=\"posm_type\"]").forEach(c => { if (c.value === "Tidak ada") c.checked = false; });' +
-            '}' +
-          '}' +
-          'if (e.target && e.target.name === "stocked_brand") {' +
-            'if (e.target.value === "Belum diketahui" && e.target.checked) {' +
-              'f.querySelectorAll("input[name=\"stocked_brand\"]").forEach(c => { if (c.value !== "Belum diketahui") c.checked = false; });' +
-            '} else if (e.target.value !== "Belum diketahui" && e.target.checked) {' +
-              'f.querySelectorAll("input[name=\"stocked_brand\"]").forEach(c => { if (c.value === "Belum diketahui") c.checked = false; });' +
-            '}' +
-          '}' +
-          'bind();' +
-        '}); bind();' +
-      '}; setTimeout(setupConditionals, 50);' +
-    '})();</script>';
-
     return pageHead('SURVEY OUTLET FM','Kunjungan & Kualifikasi Toko','Sesuai standar kuesioner resmi TRW (5 Bagian).') +
       selectedOutletBlock() +
       (state.openAttendance ? '' : '<div class="notice warning">Wajib Check In dengan foto + GPS sebelum menyimpan kuesioner.</div>') +
@@ -1215,7 +1278,7 @@
         section('5','Survey TRW & Market Insight',surveySection,'Petakan ketersediaan stok, harga, pembanding, persepsi dan unmet demand.') +
         '<div class="notice warning small">Dengan menekan tombol Simpan, aplikasi merekam koordinat GPS perangkat dan waktu survey lapangan. Data tersimpan offline bila tidak ada sinyal.</div>' +
         '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button><button type="submit" class="btn btn-yellow">Simpan Kuesioner Survey</button></div>' +
-      '</form>' + scriptTrigger;
+      '</form>' 
   }
   function activationFormPage() {
     if (state.user.role !== 'SPG' && !['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
@@ -1297,13 +1360,55 @@
     if (!['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
     const canEdit = ['ADMIN','TL'].includes(state.user.role);
     const userOptions = state.users.filter((u) => u.active && u.role === 'FM').map((u) => ({value:u.user_id,label:u.full_name + ' · FM'}));
-    const outletOptions = state.outletList.map((o) => ({value:o.outlet_id,label:o.outlet_name + ' · ' + o.city}));
-    const content = field('beat_date','Tanggal','date',{required:true,value:localDate()}) + field('beat_week','Minggu program','text',{placeholder:'Contoh: Week 03'}) + field('beat_user','Petugas FM','select',{required:true,blank:'Pilih FM',options:userOptions}) + field('beat_outlet','Outlet','select',{required:true,blank:'Pilih outlet',options:outletOptions}) + field('beat_sequence','Urutan kunjungan','number',{required:true,min:1,value:'1'}) + field('beat_notes','Catatan rute','textarea',{full:true,placeholder:'Cluster / arahan / jadwal kunjungan'});
+    const outlets = state.outletList || [];
+
+    const baseFields = field('beat_date','Tanggal Rute','date',{required:true,value:localDate()}) +
+      field('beat_week','Minggu Program','text',{placeholder:'Contoh: Week 03'}) +
+      field('beat_user','Petugas FM','select',{required:true,blank:'Pilih Petugas FM',options:userOptions}) +
+      field('beat_notes','Catatan Rute / Cluster','textarea',{full:true,placeholder:'Cluster / arahan / jadwal rute'});
+
+    const outletChecklistHtml = outlets.map((o) => {
+      const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
+      const city = o.city || 'Kota belum diisi';
+      const area = o.area ? ' · ' + o.area : '';
+      return '<label class="beat-outlet-row" data-outlet-id="' + esc(o.outlet_id) + '" data-search="' + esc((o.outlet_name + ' ' + city + ' ' + (o.area || '')).toLowerCase()) + '" data-city="' + esc(city.toLowerCase()) + '">' +
+        '<input type="checkbox" name="beat_outlet_ids" value="' + esc(o.outlet_id) + '" class="beat-outlet-checkbox">' +
+        '<div class="beat-outlet-info">' +
+          '<div class="beat-outlet-name">' + esc(o.outlet_name) + '</div>' +
+          '<div class="beat-outlet-sub">' + esc(city) + esc(area) + ' · <span class="tag gray tiny">' + esc(segment) + '</span> ' + (o.priority ? '<span class="tag yellow tiny">' + esc(o.priority) + '</span>' : '') + '</div>' +
+        '</div>' +
+      '</label>';
+    }).join('');
+
+    const cities = Array.from(new Set(outlets.map((o) => o.city).filter(Boolean))).sort();
+    const cityFilterOptions = '<option value="">Semua Wilayah / Kota (' + outlets.length + ' Outlet)</option>' +
+      cities.map((c) => '<option value="' + esc(c.toLowerCase()) + '">' + esc(c) + '</option>').join('');
+
+    const batchSelectorHtml = '<div class="beat-outlet-selector field-full">' +
+      '<div class="beat-selector-toolbar">' +
+        '<div>' +
+          '<strong>Pilih Outlet untuk Rute (Maksimal 20 Outlet Sekaligus)</strong>' +
+          '<div class="form-note">Centang hingga 20 outlet yang akan ditugaskan ke FM pada tanggal ini.</div>' +
+        '</div>' +
+        '<div><span id="beat-counter-tag" class="tag yellow beat-counter-tag">0 / 20 Outlet Terpilih</span></div>' +
+      '</div>' +
+      '<div class="beat-selector-controls">' +
+        '<input type="search" id="beat-outlet-search" placeholder="Cari nama toko / area..." style="flex:1;min-width:180px;height:36px;padding:6px 12px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;">' +
+        '<select id="beat-city-filter" style="height:36px;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;">' + cityFilterOptions + '</select>' +
+        '<button type="button" class="btn btn-small btn-yellow" data-act="beat-select-20">⚡ Pilih 20 Outlet Teratas</button>' +
+        '<button type="button" class="btn btn-small btn-plain" data-act="beat-clear-selection">🧹 Kosongkan</button>' +
+      '</div>' +
+      '<div class="beat-outlets-scroll" id="beat-outlets-scroll" style="margin-top:10px;">' +
+        (outletChecklistHtml || '<div class="empty-state">Belum ada outlet terdaftar.</div>') +
+      '</div>' +
+    '</div>';
+
     const form = canEdit
-      ? '<div class="card"><div class="card-head"><div><h2>Assign rencana kunjungan</h2><p class="muted small">Setiap rute ditetapkan untuk satu FM, tanggal, outlet, dan urutan.</p></div></div><form data-form="beatPlan"><div class="field-grid">' + content + '</div><button type="submit" class="btn btn-yellow btn-block">Simpan rencana kunjungan</button></form></div>'
+      ? '<div class="card"><div class="card-head"><div><h2>Assign Rencana Kunjungan (Hingga 20 Outlet Sekaligus)</h2><p class="muted small">Tentukan petugas FM, tanggal kerja, lalu centang hingga 20 outlet sekaligus.</p></div></div><form data-form="beatPlan"><div class="field-grid">' + baseFields + '</div>' + batchSelectorHtml + '<button type="submit" class="btn btn-yellow btn-block" style="margin-top:16px;font-weight:700;">Simpan Rencana Kunjungan (Maks 20 Outlet)</button></form></div>'
       : '<div class="card"><div class="notice">Akun PM dapat melihat jadwal, sedangkan pembuatan dan perubahan penugasan rute dilakukan oleh TL/Admin.</div></div>';
+
     const list = state.beatPlan.length ? '<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Petugas</th><th>Outlet</th><th>Status</th></tr></thead><tbody>' + state.beatPlan.map((b) => '<tr><td>' + esc(fmtDate(b.date)) + '<div class="tiny muted">' + esc(b.week || '') + '</div></td><td>' + esc(userName(b.user_id) || b.user_id) + '</td><td>' + esc(outletName(b.outlet_id) || b.outlet_id) + '</td><td>' + esc(b.status || 'PLANNED') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada rencana kunjungan.</div>';
-    return pageHead('OPERASIONAL','Rencana kunjungan','TL/Admin menetapkan outlet, tanggal, FM, dan urutan kunjungan.') + form + '<div class="card"><div class="card-head"><div><h2>Daftar rencana</h2><p class="muted small">Jadwal kunjungan yang sudah dibuat.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Refresh</button></div>' + list + '</div>';
+    return pageHead('OPERASIONAL','Rencana kunjungan','TL/Admin menetapkan rencana kunjungan hingga 20 outlet sekaligus per FM.') + form + '<div class="card"><div class="card-head"><div><h2>Daftar rencana</h2><p class="muted small">Jadwal kunjungan yang sudah dibuat.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Refresh</button></div>' + list + '</div>';
   }
   function outletName(id) { const outlet = state.outletList.find((o) => String(o.outlet_id) === String(id)); return outlet ? outlet.outlet_name : ''; }
   function userName(id) { const user = state.users.find((u) => String(u.user_id) === String(id)); return user ? user.full_name : ''; }
