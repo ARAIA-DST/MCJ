@@ -556,7 +556,7 @@
     f.dataset.condBound = '1';
 
     const updateMsLabels = () => {
-      ['ms-stocked-brands', 'ms-posm-type', 'ms-comp-brands'].forEach((id) => {
+      ['ms-stocked-brands', 'ms-sku-range', 'ms-posm-type', 'ms-comp-brands'].forEach((id) => {
         const container = document.getElementById('container-' + id);
         if (!container) return;
         const checkboxes = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'));
@@ -565,7 +565,7 @@
         const count = checkboxes.length;
         if (label) {
           if (count === 0) {
-            label.textContent = id === 'ms-stocked-brands' ? 'Pilih ready stock merek...' : id === 'ms-posm-type' ? 'Pilih jenis POSM terpasang...' : 'Pilih merek kompetitor...';
+            label.textContent = id === 'ms-stocked-brands' ? 'Pilih ready stock merek...' : id === 'ms-sku-range' ? 'Pilih range SKU relevan...' : id === 'ms-posm-type' ? 'Pilih jenis POSM terpasang...' : 'Pilih merek kompetitor...';
             label.classList.add('is-empty');
           } else if (count === 1) {
             label.textContent = checkboxes[0].dataset.label || checkboxes[0].value;
@@ -648,6 +648,13 @@
           f.querySelectorAll('input[name="stocked_brand"]').forEach((c) => { if (c.value !== 'Belum diketahui') c.checked = false; });
         } else if (e.target.value !== 'Belum diketahui' && e.target.checked) {
           f.querySelectorAll('input[name="stocked_brand"]').forEach((c) => { if (c.value === 'Belum diketahui') c.checked = false; });
+        }
+      }
+      if (e.target && e.target.name === 'sku_range_item') {
+        if (e.target.value === 'Tidak Pernah Menjual' && e.target.checked) {
+          f.querySelectorAll('input[name="sku_range_item"]').forEach((c) => { if (c.value !== 'Tidak Pernah Menjual') c.checked = false; });
+        } else if (e.target.value !== 'Tidak Pernah Menjual' && e.target.checked) {
+          f.querySelectorAll('input[name="sku_range_item"]').forEach((c) => { if (c.value === 'Tidak Pernah Menjual') c.checked = false; });
         }
       }
       bind();
@@ -1155,9 +1162,13 @@
       field('visit_notes','1.7 Catatan Kunjungan','textarea',{full:true,placeholder:'Kondisi outlet, kebutuhan, follow-up…'});
 
     // Section 2: Kualifikasi Outlet (2.1 s/d 2.17)
-    const skuRangeCheckboxes = ['Braking Component', 'Linkage', 'Suspension', 'Tidak Pernah Menjual'].map((s) =>
-      '<label class="brand-check-chip"><input type="checkbox" name="sku_range_item" value="' + esc(s) + '"><span>' + esc(s) + '</span></label>'
-    ).join('');
+    const skuRangeOptions = ['Braking Component', 'Linkage', 'Suspension', 'Tidak Pernah Menjual'];
+    const skuRangeDropdown = multiSelectDropdownHtml('ms-sku-range', 'sku_range_item', '2.14 Range SKU Relevan', skuRangeOptions, {
+      required: true,
+      full: true,
+      placeholder: 'Pilih range SKU relevan...',
+      hint: 'Pilih kategori komponen yang dijual.'
+    });
 
     const stockBrandOptions = ['Belum diketahui', 'TRW', 'Akebono', 'Bendix', 'Birkens', 'MK KASHIYAMA', 'SANIKO', 'MONRO'];
     const stockedBrandsDropdown = multiSelectDropdownHtml('ms-stocked-brands', 'stocked_brand', '2.3 Stok Aktif Brake / Steering / Suspension?', stockBrandOptions, {
@@ -1200,7 +1211,7 @@
       field('trw_shelf_presence','2.11 Sudah Mengenal TRW?','select',{required:true,blank:'Pilih status pengenalan TRW',options:['Pernah menggunakan','Pernah tau','Belum pernah']}) +
       field('trw_in_stock','2.12 TRW Tersedia di Rak / Stok Toko?','select',{required:true,blank:'Pilih ketersediaan',options:['Ya','Tidak']}) +
       field('owner_engagement','2.13 Owner / Kepala Mekanik Bersedia Ikut Edukasi?','select',{required:true,blank:'Pilih kesediaan',options:['Ya','Tidak','Perlu follow-up']}) +
-      '<div class="field field-full"><label>2.14 Range SKU Relevan <span aria-hidden="true">*</span></label><p class="form-note">Pilih kategori komponen yang dijual:</p><div class="brand-check-group">' + skuRangeCheckboxes + '</div></div>' +
+      skuRangeDropdown +
       field('purchase_frequency','2.15 Frekuensi Restock Toko','select',{required:true,blank:'Pilih frekuensi',options:['Mingguan','2 Mingguan','Bulanan','Tidak rutin','Belum diketahui']}) +
       field('eligible','2.16 Sales Follow Up / Hasil Kualifikasi','select',{required:true,blank:'Pilih hasil kualifikasi',options:[{value:'Ya',label:'Lolos Qualified otomatis / Ya — Qualified'},{value:'Tidak',label:'Tidak Qualified'}]}) +
       field('qualification_reason','2.17 Alasan Kualifikasi / Catatan Follow-up','textarea',{full:true,placeholder:'Wajib diisi bila tidak qualified, atau catatan kebutuhan bila qualified.'});
@@ -1223,16 +1234,13 @@
       photoField('posm_before','3.7a Foto POSM Before','Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
       photoField('posm_after','3.7b Foto POSM After','Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
       field('owner_approval','3.8 Persetujuan Owner untuk POSM','select',{options:['Ya','Tidak','Tidak diperlukan']}) +
-      field('posm_owner_name','Nama Owner / PIC Approval POSM','text',{placeholder:'Nama pemberi persetujuan'}) +
       field('posm_notes','Catatan POSM','textarea',{full:true,placeholder:'Ukuran spanduk, posisi gantung, dll.'});
 
-    // Section 4: Edukasi Produk (4.1 s/d 4.4)
+    // Section 4: Edukasi Produk (4.1 s/d 4.3)
     const eduSection = field('education_done','4.1 Edukasi Produk Diberikan?','select',{required:true,blank:'Pilih status edukasi',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) +
       '<div id="wrap-edu-details" class="conditional-block">' +
         field('education_type','4.2 Materi Edukasi yang Diberikan','select',{options:['Product Knowledge','Program Promo','Product Knowledge + Promo','Demo Komponen Rem / Steering','Tidak dilakukan']}) +
         field('product_knowledge','4.3 Poin Edukasi / Catatan Penjelasan','textarea',{full:true,placeholder:'Catatan materi yang disampaikan sesuai script TRW'}) +
-        field('education_owner','4.4 Nama Owner / PIC Penerima Edukasi','text',{placeholder:'Penerima edukasi'}) +
-        field('education_verified','Verifikasi Owner','select',{options:['Ya','Tidak']}) +
       '</div>';
 
     // Section 5: Survey TRW & Market Insight (5.1 s/d 5.13)
