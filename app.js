@@ -1004,18 +1004,38 @@
       '<label class="brand-check-chip"><input type="checkbox" name="sku_range_item" value="' + esc(s) + '"><span>' + esc(s) + '</span></label>'
     ).join('');
 
-    const stockBrandOptions = ['TRW', 'Akebono', 'Bendix', 'Birkens', 'MK KASHIYAMA', 'SANIKO', 'MONRO', 'Belum diketahui'];
+    const stockBrandOptions = ['Belum diketahui', 'TRW', 'Akebono', 'Bendix', 'Birkens', 'MK KASHIYAMA', 'SANIKO', 'MONRO'];
     const stockedBrandsDropdown = multiSelectDropdownHtml('ms-stocked-brands', 'stocked_brand', '2.3 Stok Aktif Brake / Steering / Suspension?', stockBrandOptions, {
       required: true,
       full: true,
       placeholder: 'Pilih ready stock merek...',
-      hint: 'Centang semua merek ready stock yang tersedia di toko.'
+      hint: 'Apakah toko rutin menyetok dan menjual komponen rem (kampas rem/cakram), minyak rem, atau kaki-kaki/steering?'
     });
+
+    const stockVolumeBrands = [
+      { brand: 'TRW', key: 'vol_TRW' },
+      { brand: 'Akebono', key: 'vol_Akebono' },
+      { brand: 'Bendix', key: 'vol_Bendix' },
+      { brand: 'Birkens', key: 'vol_Birkens' },
+      { brand: 'MK KASHIYAMA', key: 'vol_MK_KASHIYAMA' },
+      { brand: 'SANIKO', key: 'vol_SANIKO' },
+      { brand: 'MONRO', key: 'vol_MONRO' }
+    ];
+    const stockVolumeFieldsHtml = '<div id="wrap-brand-monthly-volume" class="conditional-block" style="display:none;">' +
+      '<div class="conditional-label">2.4 Estimasi Pengambilan per Bulan (Wajib Diisi)</div>' +
+      '<p class="form-note" style="margin-bottom:10px;">Kira-kira dalam sebulan biasanya ambil/kulakan berapa banyak untuk masing-masing merek tersebut? (Contoh pengisian: TRW 50 set/bln, Akebono 40 set/bln, Bendix 20 set/bln)</p>' +
+      stockVolumeBrands.map((item) =>
+        '<div id="wrap-' + esc(item.key) + '" class="field field-full" style="display:none;margin-bottom:10px;">' +
+          '<label>Estimasi Pengambilan per Bulan ' + esc(item.brand) + ' <span aria-hidden="true">*</span></label>' +
+          '<input name="' + esc(item.key) + '" type="text" placeholder="Contoh: ' + esc(item.brand) + ' 50 set/bln">' +
+        '</div>'
+      ).join('') +
+    '</div>';
 
     const qualSection = field('outlet_type','2.1 Tipe Outlet','select',{required:true,blank:'Pilih tipe outlet',options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) +
       field('active_bays','2.2 Jumlah Active Bay (Khusus bengkel / workshop)','number',{min:0,placeholder:'Minimal 3 bila dikualifikasikan sebagai bengkel/workshop'}) +
       stockedBrandsDropdown +
-      field('brand_monthly_volume','2.4 Estimasi Pengambilan per Bulan (per Brand)','textarea',{full:true,placeholder:'Estimasi pengambilan tiap brand (contoh: TRW 50 set, Akebono 40 set, Bendix 30 set...)'}) +
+      stockVolumeFieldsHtml +
       field('segment_final','2.5 Klasifikasi Final SOW','select',{required:true,blank:'Pilih klasifikasi setelah verifikasi',options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) +
       field('brand_count','2.6 Jumlah Brand yang Dijual','number',{min:0,placeholder:'Contoh: 25'}) +
       field('fastest_moving_brand','2.7 Paling Fast Moving Merek Apa?','text',{placeholder:'Nama merek paling laris di outlet ini'}) +
@@ -1128,6 +1148,27 @@
         '};' +
         'const bind = () => {' +
           'updateMsLabels();' +
+          'const checkedBrands = Array.from(f.querySelectorAll("input[name=\\"stocked_brand\\"]:checked")).map(c => c.value);' +
+          'const brandVolMap = [' +
+            '{ brand: "TRW", key: "vol_TRW" },' +
+            '{ brand: "Akebono", key: "vol_Akebono" },' +
+            '{ brand: "Bendix", key: "vol_Bendix" },' +
+            '{ brand: "Birkens", key: "vol_Birkens" },' +
+            '{ brand: "MK KASHIYAMA", key: "vol_MK_KASHIYAMA" },' +
+            '{ brand: "SANIKO", key: "vol_SANIKO" },' +
+            '{ brand: "MONRO", key: "vol_MONRO" }' +
+          '];' +
+          'let anyBrandVol = false;' +
+          'brandVolMap.forEach(item => {' +
+            'const active = checkedBrands.includes(item.brand);' +
+            'if (active) anyBrandVol = true;' +
+            'const w = document.getElementById("wrap-" + item.key);' +
+            'const inp = f.elements[item.key];' +
+            'if (w) w.style.display = active ? "block" : "none";' +
+            'if (inp) inp.required = active;' +
+          '});' +
+          'const outerVolWrap = document.getElementById("wrap-brand-monthly-volume");' +
+          'if (outerVolWrap) outerVolWrap.style.display = anyBrandVol ? "block" : "none";' +
           'const pHist = f.elements["purchase_history_signal"]; const bCat = document.getElementById("wrap-brake-cat");' +
           'if (pHist && bCat) bCat.style.display = (pHist.value === "Ya") ? "block" : "none";' +
           'const checkedPosm = Array.from(f.querySelectorAll("input[name=\"posm_type\"]:checked")).map(c => c.value);' +
@@ -1290,9 +1331,29 @@
     const selectedOutletType = fieldVal(form, 'outlet_type');
     if (!selectedOutletType) throw new Error('2.1 Tipe outlet wajib dipilih.');
 
-    // Collect checked brands for 2.3
+    // Collect checked brands for 2.3 and conditional volumes for 2.4
     const checkedStockBrands = Array.from(form.querySelectorAll('input[name="stocked_brand"]:checked')).map((c) => c.value);
-    const brakeBrandsStocked = checkedStockBrands.length ? checkedStockBrands.join(', ') : 'Belum diketahui';
+    if (!checkedStockBrands.length) throw new Error('2.3 Stok Aktif Brake/Steering/Suspension wajib dipilih.');
+    const brakeBrandsStocked = checkedStockBrands.join(', ');
+
+    const stockVolBrands = [
+      { brand: 'TRW', key: 'vol_TRW' },
+      { brand: 'Akebono', key: 'vol_Akebono' },
+      { brand: 'Bendix', key: 'vol_Bendix' },
+      { brand: 'Birkens', key: 'vol_Birkens' },
+      { brand: 'MK KASHIYAMA', key: 'vol_MK_KASHIYAMA' },
+      { brand: 'SANIKO', key: 'vol_SANIKO' },
+      { brand: 'MONRO', key: 'vol_MONRO' }
+    ];
+    const brandMonthlyVolEntries = [];
+    for (const item of stockVolBrands) {
+      if (checkedStockBrands.includes(item.brand)) {
+        const val = fieldVal(form, item.key);
+        if (!val) throw new Error('2.4 Estimasi Pengambilan per Bulan ' + item.brand + ' wajib diisi.');
+        brandMonthlyVolEntries.push(item.brand + ': ' + val);
+      }
+    }
+    const brandMonthlyVolume = brandMonthlyVolEntries.join(', ');
 
     // Collect checked SKU range for 2.14
     const checkedSkuRange = Array.from(form.querySelectorAll('input[name="sku_range_item"]:checked')).map((c) => c.value);
@@ -1371,7 +1432,7 @@
         active_bays: fieldVal(form, 'active_bays'),
         brake_steering_stock_confirmed: fieldVal(form, 'trw_in_stock') === 'Ya' || checkedStockBrands.length > 0 ? 'Ya' : 'Belum diketahui',
         brake_brands_stocked: brakeBrandsStocked,
-        brand_monthly_volume: fieldVal(form, 'brand_monthly_volume'),
+        brand_monthly_volume: brandMonthlyVolume,
         segment_final: fieldVal(form, 'segment_final'),
         brand_count: fieldVal(form, 'brand_count'),
         fastest_moving_brand: fieldVal(form, 'fastest_moving_brand'),
