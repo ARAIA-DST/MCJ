@@ -429,6 +429,8 @@ input[type="checkbox"] { width: 18px; height: 18px; margin: 0; flex-shrink: 0; a
 .filter-chip.active { color: var(--ink); background: var(--brand-soft); border-color: var(--focus); }
 .period-tabs { gap: var(--s1); }
 .period-tabs .filter-chip { min-width: 88px; }
+.client-export-card .field-grid { max-width: 36rem; margin-top: var(--s4); }
+.client-export-card .form-actions { justify-content: flex-start; }
 .outlet-item { display: grid; gap: var(--s2); border-top: 1px solid var(--line); padding: var(--s4) 0; }
 .outlet-item:last-child { padding-bottom: 0; }
 .outlet-info, .outlet-actions { min-width: 0; overflow-wrap: anywhere; }

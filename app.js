@@ -39,6 +39,8 @@
     outletFilter: 'all',
     reportTab: 'visits',
     periodTab: 'daily',
+    clientExportRange: null,
+    clientExporting: false,
     loading: false,
     queueCount: 0,
     queueBytes: 0,
@@ -100,7 +102,12 @@
   function fmtDate(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Jakarta'}).format(date); }
   function fmtDateTime(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jakarta'}).format(date); }
   function fmtNum(value) { return new Intl.NumberFormat('id-ID').format(Number(value || 0)); }
-  function localDate() { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); return parts; }
+  function localDate() {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(new Date());
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return values.year + '-' + values.month + '-' + values.day;
+  }
   function pct(value, target) { return target ? Math.min(100, Math.round(Number(value || 0) / Number(target) * 100)) : 0; }
   function roleName(role) { return ({ADMIN:'Administrator', PM:'Project Manager', TL:'Talent Coordinator / Team Leader', FM:'Field Merchandiser', SPG:'Mobile SPG', CLIENT:'Client / TRW (read-only)'})[role] || role || 'User'; }
   function toast(message, type) {
@@ -1450,16 +1457,32 @@
     return pageHead('Catat kendala lapangan','Setiap kendala memiliki action, PIC, deadline dan status.') + selectedOutletBlock() + '<form data-form="issue" class="card">' + section('1','Kendala dan tindak lanjut',content) + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="input">Kembali</button><button type="submit" class="btn btn-primary">Simpan issue</button></div></form>';
   }
 
+  function clientExportCard() {
+    const today = localDate();
+    const range = state.clientExportRange || { from: today.slice(0, 8) + '01', to: today };
+    return '<form data-form="exportClient" class="card client-export-card" aria-labelledby="client-export-title" aria-busy="' + state.clientExporting + '">' +
+      '<h2 id="client-export-title">Unduh laporan survei FM</h2>' +
+      '<p class="muted small">Excel memuat ringkasan, data outlet, bukti, dan hasil survei lengkap. Filter mengikuti tanggal kunjungan dalam WIB.</p>' +
+      '<div class="field-grid">' +
+      field('from', 'Tanggal mulai', 'date', { required: true, min: '1900-01-01', value: range.from }) +
+      field('to', 'Tanggal akhir', 'date', { required: true, min: '1900-01-01', value: range.to }) +
+      '</div><div class="form-actions"><button type="submit" class="btn btn-primary"' +
+      (state.clientExporting ? ' disabled>Menyiapkan Excel…' : '>Unduh Excel (.xlsx)') + '</button></div></form>';
+  }
+
   function reportsPage() {
+    const isClient = state.user.role === 'CLIENT';
     const m = (state.dashboard && state.dashboard.metrics) || {};
     const periods = (state.reports && state.reports.periods) || {};
     const current = periods[state.periodTab] || {};
     const tabs = [['daily','Harian'],['weekly','Mingguan'],['monthly','Bulanan']].map(([key,label]) =>
       filterButton('report-tab', key, label, state.periodTab === key, 'tab')).join('');
-    const periodCards = '<div class="card"><div class="card-head"><div><h2>Ringkasan ' + ({daily:'harian',weekly:'mingguan',monthly:'bulanan'}[state.periodTab]) + '</h2><p class="muted small">' + esc(current.range || 'Muat data laporan untuk menghitung periode.') + '</p></div><button class="btn btn-small btn-plain" data-act="refresh-reports">Muat ulang</button></div><div class="grid grid-3 metric-grid">' + metricCard('FM visits',current.visits, null,'Visit tersimpan') + metricCard('POSM reports',current.posm,null,'Audit / tindakan POSM') + metricCard('Edukasi',current.education,null,'Log edukasi') + metricCard('Outlet qualification',current.qualifications,null,'Hasil verifikasi outlet') + metricCard('TRW surveys',current.surveys,null,'Survey FM') + metricCard('Competitor records',current.competitors,null,'Observasi kompetitor terstruktur') + metricCard('SPG market insight',current.spgSurveys,null,'Survey pada sesi activation') + metricCard('SPG activation days',current.activations,null,'Hari aktivasi') + metricCard('End-user interactions',current.interactions,null,'Interaksi agregat') + '</div><div class="divider"></div><div class="row"><button class="btn btn-plain" data-act="export-summary" data-period="' + state.periodTab + '">Unduh ringkasan CSV</button><button class="btn btn-primary" data-act="export-records">Unduh data lengkap</button></div></div>';
+    const csvActions = isClient ? '' : '<div class="divider"></div><div class="row"><button class="btn btn-plain" data-act="export-summary" data-period="' + state.periodTab + '">Unduh ringkasan CSV</button><button class="btn btn-primary" data-act="export-records">Unduh data lengkap</button></div>';
+    const periodCards = '<div class="card"><div class="card-head"><div><h2>Ringkasan ' + ({daily:'harian',weekly:'mingguan',monthly:'bulanan'}[state.periodTab]) + '</h2><p class="muted small">' + esc(current.range || 'Muat data laporan untuk menghitung periode.') + '</p></div><button class="btn btn-small btn-plain" data-act="refresh-reports">Muat ulang</button></div><div class="grid grid-3 metric-grid">' + metricCard('FM visits',current.visits, null,'Visit tersimpan') + metricCard('POSM reports',current.posm,null,'Audit / tindakan POSM') + metricCard('Edukasi',current.education,null,'Log edukasi') + metricCard('Outlet qualification',current.qualifications,null,'Hasil verifikasi outlet') + metricCard('TRW surveys',current.surveys,null,'Survey FM') + metricCard('Competitor records',current.competitors,null,'Observasi kompetitor terstruktur') + metricCard('SPG market insight',current.spgSurveys,null,'Survey pada sesi activation') + metricCard('SPG activation days',current.activations,null,'Hari aktivasi') + metricCard('End-user interactions',current.interactions,null,'Interaksi agregat') + '</div>' + csvActions + '</div>';
     const tabsHead = '<div class="filter-row period-tabs" role="group" aria-label="Periode laporan">' + tabs + '</div>';
     const table = reportListSection();
-    return pageHead('Laporan & evidence','Rekap periode, aktivitas lapangan, dan ekspor data.') + '<div class="card metric-strip"><div class="grid grid-3 metric-grid">' + metricCard('Unique outlets',m.uniqueVisited,180,'Outlet unik yang pernah dikunjungi') + metricCard('Evidence records',m.evidence,null,'Foto dan geo records') + metricCard('Open issues',m.openIssues,null,'Belum closed') + '</div></div>' + tabsHead + periodCards + '<div class="card"><div class="card-head"><div><h2>Aktivitas terbaru</h2><p class="muted small">Pilih kategori untuk melihat detail dan ekspor.</p></div></div><div class="filter-row report-tabs" role="group" aria-label="Kategori aktivitas">' + [['visits','FM Visit'],['attendance','Check In/Out'],['qualifications','Qualification'],['posm','POSM'],['education','Edukasi'],['surveys','Survey FM'],['competitors','Kompetitor'],['spgSurveys','Survey SPG'],['activations','SPG'],['interactions','Interaksi'],['issues','Issues'],['evidence','Evidence']].map(([key,label]) => filterButton('report-list-tab', key, label, state.reportTab === key, 'tab')).join('') + '</div>' + table + '</div>';
+    return pageHead('Laporan & evidence','Rekap periode, aktivitas lapangan, dan ekspor data.') + (isClient ? clientExportCard() : '') +
+      '<div class="card metric-strip"><div class="grid grid-3 metric-grid">' + metricCard('Unique outlets',m.uniqueVisited,180,'Outlet unik yang pernah dikunjungi') + metricCard('Evidence records',m.evidence,null,'Foto dan geo records') + metricCard('Open issues',m.openIssues,null,'Belum closed') + '</div></div>' + tabsHead + periodCards + '<div class="card"><div class="card-head"><div><h2>Aktivitas terbaru</h2><p class="muted small">Pilih kategori untuk melihat detail.</p></div></div><div class="filter-row report-tabs" role="group" aria-label="Kategori aktivitas">' + [['visits','FM Visit'],['attendance','Check In/Out'],['qualifications','Qualification'],['posm','POSM'],['education','Edukasi'],['surveys','Survey FM'],['competitors','Kompetitor'],['spgSurveys','Survey SPG'],['activations','SPG'],['interactions','Interaksi'],['issues','Issues'],['evidence','Evidence']].map(([key,label]) => filterButton('report-list-tab', key, label, state.reportTab === key, 'tab')).join('') + '</div>' + table + '</div>';
   }
   function reportListSection() {
     const r = state.reports || {};
@@ -1485,7 +1508,7 @@
     const cards = [];
     if (role !== 'CLIENT') cards.push('<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>');
     cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 8 karakter.</small></button>');
-    cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
+    cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh ' + (role === 'CLIENT' ? 'Excel' : 'CSV') + '.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
     if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
@@ -1496,7 +1519,7 @@
     const locationNote = role === 'FM'
       ? '<p class="notice">Posisi petugas FM diperbarui berkala selama Anda masuk dan memberi izin lokasi.</p>'
       : '';
-    return pageHead('Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note + locationNote + '<p class="version-note">TRW Field · Versi 1.6.5</p>';
+    return pageHead('Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note + locationNote + '<p class="version-note">TRW Field · Versi 1.6.6</p>';
   }
 
   function usersPage() {
@@ -1945,6 +1968,7 @@
   }
 
   function signOutLocal() {
+    state.clientExportRange = null;
     stopFmLocationTracking(); state.token = ''; state.user = null; localStorage.removeItem(STORE.token); localStorage.removeItem(STORE.user); state.page = 'home'; state.openAttendance = readJson(localStorage.getItem(STORE.openAttendance), null); render(); }
   async function loginSubmit(form) {
     const username = fieldVal(form, 'username');
@@ -1966,13 +1990,24 @@
     });
   }
 
+  function downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function downloadCSV(filename, headers, rows) {
     const lines = [headers].concat(rows).map((row) => row.map((value) => {
       let text = value == null ? '' : String(value);
       if (/^[=+@\-]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g,'""') + '"';
     }).join(','));
-    const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadBlob(filename, new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }));
   }
   function exportSummary(period) {
     const summary = (state.reports && state.reports.periods && state.reports.periods[period]) || {};
@@ -1991,13 +2026,36 @@
     else toast(rows.length + ' baris berhasil diekspor.', 'ok');
   }
 
+  async function exportClientReport(form) {
+    if (state.user?.role !== 'CLIENT') throw new Error('Ekspor ini tersedia untuk akun Client.');
+    const token = state.token;
+    const from = fieldVal(form, 'from');
+    const to = fieldVal(form, 'to');
+    state.clientExportRange = { from, to };
+    if (!from || !to) throw new Error('Isi tanggal mulai dan tanggal akhir.');
+    if (from > to) throw new Error('Tanggal akhir harus sama dengan atau setelah tanggal mulai.');
+    if (!navigator.onLine) throw new Error('Sambungkan ke internet untuk mengunduh laporan.');
+    if (!window.TRWClientReport) throw new Error('Pembuat laporan belum dimuat. Muat ulang aplikasi.');
+    const data = await apiGet('exportClientSurvey', { from, to }, { timeout: 45000 });
+    if (state.token !== token) return;
+    if (!data.visits.length) throw new Error('Tidak ada kunjungan FM pada rentang tanggal ini.');
+    const workbook = await window.TRWClientReport.build(data);
+    if (state.token !== token) return;
+    downloadBlob('TRW_Laporan_Survei_FM_' + from + '_sd_' + to + '.xlsx', workbook);
+    toast('Laporan Excel siap diunduh.', 'ok');
+  }
+
   async function handleSubmit(event) {
     const form = event.target.closest('form[data-form]'); if (!form) return;
     event.preventDefault(); if (form.dataset.busy === '1') return;
-    setBusy(form, true);
+    const type = form.dataset.form;
+    const isClientExport = type === 'exportClient';
+    if (isClientExport && state.clientExporting) return;
+    if (isClientExport) state.clientExporting = true;
+    setBusy(form, true, isClientExport ? 'Menyiapkan Excel…' : undefined);
     try {
-      const type = form.dataset.form;
       if (type === 'login') await loginSubmit(form);
+      else if (isClientExport) await exportClientReport(form);
       else if (type === 'visit') await submitVisitForm(form);
       else if (type === 'activation') await submitActivationForm(form);
       else if (type === 'interaction') await submitInteractionForm(form);
@@ -2095,10 +2153,18 @@
         const actions = form.querySelector('.form-actions');
         if (actions) actions.before(feedback);
         else form.append(feedback);
-        if (form.dataset.form !== 'login') showError(error);
+        if (type !== 'login' && !isClientExport) showError(error);
       } else showError(error);
     } finally {
       setBusy(form, false);
+      if (isClientExport) {
+        state.clientExporting = false;
+        const current = $('form[data-form="exportClient"]');
+        if (current && current !== form) {
+          setBusy(current, false);
+          $('button[type="submit"]', current).textContent = 'Unduh Excel (.xlsx)';
+        }
+      }
     }
   }
 
@@ -2432,6 +2498,9 @@
     if (form) {
       form.dataset.edited = 'true';
       form.querySelector('.form-feedback')?.remove();
+      if (form.dataset.form === 'exportClient') {
+        state.clientExportRange = { from: fieldVal(form, 'from'), to: fieldVal(form, 'to') };
+      }
     }
     if (e.target && e.target.classList.contains('ms-search-input')) {
       const targetId = e.target.dataset.msSearch;
