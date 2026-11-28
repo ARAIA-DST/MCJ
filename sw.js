@@ -1,18 +1,20 @@
-const CACHE_NAME = 'trw-field-shell-v1.6.4-fm-route';
+const CACHE_NAME = 'trw-field-shell-v1.6.5-fm-route';
+// Match the versioned URLs in index.html so the first completed install works offline.
 const SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
-  './config.js',
-  './manifest.webmanifest',
-  './vendor/leaflet.css',
-  './vendor/leaflet.js',
+  './styles.css?v=1.6.5',
+  './app.js?v=1.6.5',
+  './config.js?v=1.6.5',
+  './manifest.webmanifest?v=1.6.5',
+  './vendor/leaflet.css?v=1.6.5',
+  './vendor/leaflet.js?v=1.6.5',
+  './icons/icon-192.png?v=1.6.5',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-96.png',
   './icons/trw-logo.png',
-  './icons/trw-icon.svg'
+  './icons/trw-icon.svg?v=1.6.5'
 ];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

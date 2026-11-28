@@ -7,7 +7,7 @@
   const DB_VERSION = 1;
   const QUEUE_MAX_ITEMS = 150;
   const QUEUE_MAX_BYTES = 64 * 1024 * 1024;
-  const QUEUEABLE = new Set(['checkin', 'checkout', 'saveVisit', 'uploadEvidence', 'saveQualification', 'savePosm', 'saveEducation', 'saveSurvey', 'saveSpgSurvey', 'saveCompetitor', 'saveSpgActivation', 'saveInteraction', 'saveIssue']);
+  const QUEUEABLE = new Set(['checkin','checkout','saveVisit','uploadEvidence','saveQualification','savePosm','saveEducation','saveSurvey','saveSpgSurvey','saveCompetitor','saveSpgActivation','saveInteraction','saveIssue']);
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const state = {
@@ -49,10 +49,12 @@
     sidebarCollapsed: localStorage.getItem('trw_sidebar_collapsed') === '1',
     drawerOpen: false
   };
+  const tabletNavigation = window.matchMedia('(min-width: 768px) and (max-width: 1199px)');
+  let renderedView = '';
   let dbPromise = null;
   const postWaiters = new Map();
 
-
+  
   let fmLocationInterval = null;
   function startFmLocationTracking() {
     if (!navigator.geolocation || !state.user || state.user.role !== 'FM') return;
@@ -65,23 +67,23 @@
       const accuracy = Number(pos.coords.accuracy || 0);
       const activeOutletId = (state.openAttendance && state.openAttendance.outlet_id) || '';
       const status = state.openAttendance ? 'CHECKED_IN' : 'ONLINE';
-
+      
       apiPost('updateFmLocation', {
         lat: lat,
         lng: lng,
         accuracy: accuracy,
         active_outlet_id: activeOutletId,
         status: status
-      }, { allowQueue: false }).catch(() => { });
+      }, { allowQueue: false }).catch(() => {});
     };
 
-    navigator.geolocation.getCurrentPosition(sendLocation, () => { }, { enableHighAccuracy: true, timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(sendLocation, () => {}, { enableHighAccuracy: true, timeout: 10000 });
     fmLocationInterval = setInterval(() => {
       if (!state.token || !state.user || state.user.role !== 'FM') {
         stopFmLocationTracking();
         return;
       }
-      navigator.geolocation.getCurrentPosition(sendLocation, () => { }, { enableHighAccuracy: true, timeout: 10000 });
+      navigator.geolocation.getCurrentPosition(sendLocation, () => {}, { enableHighAccuracy: true, timeout: 10000 });
     }, 35000);
   }
 
@@ -93,23 +95,25 @@
   }
 
   function readJson(text, fallback) { try { return text ? JSON.parse(text) : fallback; } catch (_) { return fallback; } }
-  function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
-  function uid(prefix) { return (prefix || 'ID') + '-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 18).toUpperCase() : (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).toUpperCase()); }
-  function fmtDate(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' }).format(date); }
-  function fmtDateTime(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }).format(date); }
+  function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch])); }
+  function uid(prefix) { return (prefix || 'ID') + '-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,18).toUpperCase() : (Date.now().toString(36) + Math.random().toString(36).slice(2,10)).toUpperCase()); }
+  function fmtDate(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Jakarta'}).format(date); }
+  function fmtDateTime(value) { if (!value) return '—'; const date = new Date(value); if (isNaN(date.getTime())) return String(value); return new Intl.DateTimeFormat('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jakarta'}).format(date); }
   function fmtNum(value) { return new Intl.NumberFormat('id-ID').format(Number(value || 0)); }
   function localDate() { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); return parts; }
   function pct(value, target) { return target ? Math.min(100, Math.round(Number(value || 0) / Number(target) * 100)) : 0; }
-  function roleName(role) { return ({ ADMIN: 'Administrator', PM: 'Project Manager', TL: 'Talent Coordinator / Team Leader', FM: 'Field Merchandiser', SPG: 'Mobile SPG', CLIENT: 'Client / TRW (read-only)' })[role] || role || 'User'; }
+  function roleName(role) { return ({ADMIN:'Administrator', PM:'Project Manager', TL:'Talent Coordinator / Team Leader', FM:'Field Merchandiser', SPG:'Mobile SPG', CLIENT:'Client / TRW (read-only)'})[role] || role || 'User'; }
   function toast(message, type) {
     const region = $('#toast-region'); if (!region) return;
-    region.innerHTML = '<div class="toast ' + (type || '') + '" role="status">' + esc(message) + '</div>';
+    region.innerHTML = '<div class="toast ' + (type || '') + '">' + esc(message) + '</div>';
     clearTimeout(toast.timer); toast.timer = setTimeout(() => { region.innerHTML = ''; }, 4500);
   }
   function showError(error) { toast(error && error.message ? error.message : String(error || 'Terjadi kesalahan.'), 'bad'); }
   function setBusy(form, busy, label) {
     if (!form) return;
     form.dataset.busy = busy ? '1' : '0';
+    form.setAttribute('aria-busy', String(busy));
+    if (busy) form.querySelector('.form-feedback')?.remove();
     $$('button[type="submit"]', form).forEach((button) => { if (busy) { button.dataset.oldText = button.textContent; button.textContent = label || 'Menyimpan…'; } else { button.textContent = button.dataset.oldText || button.textContent; delete button.dataset.oldText; } button.disabled = busy; });
   }
 
@@ -138,7 +142,7 @@
       else { tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error); }
     });
   }
-  async function queueAll() { return (await dbRequest('queue', 'readonly', (store) => store.getAll())).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || Number(a.sequence || 0) - Number(b.sequence || 0)); }
+  async function queueAll() { return (await dbRequest('queue', 'readonly', (store) => store.getAll())).sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)) || Number(a.sequence || 0) - Number(b.sequence || 0)); }
   async function queuePut(item) { await dbRequest('queue', 'readwrite', (store) => store.put(item)); await updateQueueState(); }
   async function queueDelete(requestId) { await dbRequest('queue', 'readwrite', (store) => store.delete(requestId)); await updateQueueState(); }
   async function metaPut(key, value) { await dbRequest('meta', 'readwrite', (store) => store.put({ key, value })); }
@@ -151,9 +155,18 @@
   }
   function updateNetworkBadge() {
     const el = $('#network-badge');
-    if (el) { el.className = 'status-pill ' + (navigator.onLine ? 'online' : 'offline'); el.textContent = navigator.onLine ? 'Online' : 'Offline'; }
+    const status = navigator.onLine ? 'Online' : 'Offline';
+    if (el && el.textContent !== status) {
+      el.className = 'status-pill ' + status.toLowerCase();
+      el.textContent = status;
+    }
     const q = $('#queue-badge'); if (q) { q.textContent = state.queueCount ? String(state.queueCount) : ''; q.classList.toggle('hidden', !state.queueCount); }
-    const banner = $('#sync-banner'); if (banner) { banner.classList.toggle('hidden', !state.queueCount); const label = $('#sync-count'); if (label) label.textContent = state.queueCount + ' kiriman menunggu sinkronisasi'; }
+    const banner = $('#sync-banner');
+    if (banner) {
+      banner.classList.toggle('hidden', !state.queueCount);
+      $('#sync-count', banner).textContent = state.queueCount + ' kiriman menunggu sinkronisasi';
+      $('button', banner).disabled = !navigator.onLine || state.syncing;
+    }
   }
   function hasAPI() { return /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec(?:\?.*)?$/.test(String(C.API_URL || '')); }
   function endpointWith(params) {
@@ -187,7 +200,7 @@
         });
         const text = await response.text();
         let data = null;
-        try { data = JSON.parse(text); } catch (_) { }
+        try { data = JSON.parse(text); } catch (_) {}
         if (data && typeof data === 'object') {
           if (data.ok === false) throw new Error(data.error || 'Permintaan gagal.');
           return data;
@@ -408,20 +421,22 @@
 
   function field(name, label, type, options = {}) {
     const cls = options.full ? 'field field-full' : 'field'; const required = options.required ? ' required' : '';
-    const hint = options.hint ? '<div class="hint">' + esc(options.hint) + '</div>' : '';
+    const id = 'field-' + name;
+    const attrs = ' id="' + esc(id) + '"' + (options.hint ? ' aria-describedby="' + esc(id) + '-hint"' : '');
+    const hint = options.hint ? '<span class="hint" id="' + esc(id) + '-hint">' + esc(options.hint) + '</span>' : '';
     let control = '';
     if (type === 'select') {
-      control = '<select name="' + esc(name) + '"' + required + '>' + (options.blank ? '<option value="">' + esc(options.blank) + '</option>' : '') + (options.options || []).map((option) => { const value = typeof option === 'string' ? option : option.value; const title = typeof option === 'string' ? option : option.label; return '<option value="' + esc(value) + '"' + (options.value === value ? ' selected' : '') + '>' + esc(title) + '</option>'; }).join('') + '</select>';
+      control = '<select name="' + esc(name) + '"' + attrs + required + '>' + (options.blank ? '<option value="">' + esc(options.blank) + '</option>' : '') + (options.options || []).map((option) => { const value = typeof option === 'string' ? option : option.value; const title = typeof option === 'string' ? option : option.label; return '<option value="' + esc(value) + '"' + (options.value === value ? ' selected' : '') + '>' + esc(title) + '</option>'; }).join('') + '</select>';
     } else if (type === 'textarea') {
-      control = '<textarea name="' + esc(name) + '" placeholder="' + esc(options.placeholder || '') + '"' + required + '>' + esc(options.value || '') + '</textarea>';
+      control = '<textarea name="' + esc(name) + '"' + attrs + ' placeholder="' + esc(options.placeholder || '') + '"' + required + '>' + esc(options.value || '') + '</textarea>';
     } else if (type === 'checkbox') {
       return '<label class="checkrow field-full"><input type="checkbox" name="' + esc(name) + '" value="yes"' + (options.checked ? ' checked' : '') + '><span><strong>' + esc(label) + '</strong>' + hint + '</span></label>';
     } else {
-      control = '<input name="' + esc(name) + '" type="' + esc(type || 'text') + '"' + (options.placeholder ? ' placeholder="' + esc(options.placeholder) + '"' : '') + (options.min !== undefined ? ' min="' + esc(options.min) + '"' : '') + (options.max !== undefined ? ' max="' + esc(options.max) + '"' : '') + (options.step !== undefined ? ' step="' + esc(options.step) + '"' : '') + (options.value !== undefined ? ' value="' + esc(options.value) + '"' : '') + required + '>';
+      control = '<input name="' + esc(name) + '"' + attrs + ' type="' + esc(type || 'text') + '"' + (options.autocomplete ? ' autocomplete="' + esc(options.autocomplete) + '"' : '') + (options.minLength ? ' minlength="' + esc(options.minLength) + '"' : '') + (options.placeholder ? ' placeholder="' + esc(options.placeholder) + '"' : '') + (options.min !== undefined ? ' min="' + esc(options.min) + '"' : '') + (options.max !== undefined ? ' max="' + esc(options.max) + '"' : '') + (options.step !== undefined ? ' step="' + esc(options.step) + '"' : '') + (options.value !== undefined ? ' value="' + esc(options.value) + '"' : '') + required + '>';
     }
-    return '<div class="' + cls + '"><label>' + esc(label) + (options.required ? ' <span aria-hidden="true">*</span>' : '') + '</label>' + control + hint + '</div>';
+    return '<div class="' + cls + '"><label for="' + esc(id) + '">' + esc(label) + (options.required ? ' <span aria-hidden="true">*</span>' : '') + '</label>' + control + hint + '</div>';
   }
-
+  
   function multiSelectDropdownHtml(id, name, label, options, config = {}) {
     const required = config.required ? ' <span aria-hidden="true">*</span>' : '';
     const hint = config.hint ? '<p class="form-note">' + esc(config.hint) + '</p>' : '';
@@ -438,7 +453,7 @@
           return '<label class="ms-item-row" data-search="' + esc(lbl.toLowerCase()) + '">' +
             '<input type="checkbox" name="' + esc(name) + '" value="' + esc(val) + '" data-label="' + esc(lbl) + '" data-ms-target="' + esc(id) + '">' +
             '<span>' + esc(lbl) + '</span>' +
-            '</label>';
+          '</label>';
         }).join('');
         return groupHead + groupItems;
       }).join('');
@@ -449,39 +464,39 @@
         return '<label class="ms-item-row" data-search="' + esc(lbl.toLowerCase()) + '">' +
           '<input type="checkbox" name="' + esc(name) + '" value="' + esc(val) + '" data-label="' + esc(lbl) + '" data-ms-target="' + esc(id) + '">' +
           '<span>' + esc(lbl) + '</span>' +
-          '</label>';
+        '</label>';
       }).join('');
     }
 
     return '<div class="field ' + (config.full ? 'field-full' : '') + ' ms-dropdown-container" id="container-' + esc(id) + '" data-ms-id="' + esc(id) + '">' +
-      '<label>' + esc(label) + required + '</label>' +
+      '<label id="title-' + esc(id) + '" for="trigger-' + esc(id) + '">' + esc(label) + required + '</label>' +
       hint +
-      '<button type="button" class="ms-trigger" id="trigger-' + esc(id) + '" data-act="toggle-ms" data-target="' + esc(id) + '">' +
-      '<span class="ms-trigger-text is-empty" id="label-' + esc(id) + '">' + placeholder + '</span>' +
-      '<span class="ms-trigger-badge" id="badge-' + esc(id) + '" style="display:none;">0</span>' +
-      '<span class="ms-arrow">▾</span>' +
+      '<button type="button" class="ms-trigger" id="trigger-' + esc(id) + '" data-act="toggle-ms" data-target="' + esc(id) + '" aria-expanded="false" aria-controls="menu-' + esc(id) + '" aria-labelledby="title-' + esc(id) + ' label-' + esc(id) + '">' +
+        '<span class="ms-trigger-text is-empty" id="label-' + esc(id) + '">' + placeholder + '</span>' +
+        '<span class="ms-trigger-badge" id="badge-' + esc(id) + '" style="display:none;">0</span>' +
+        '<span class="ms-arrow" aria-hidden="true"></span>' +
       '</button>' +
       '<div class="ms-menu" id="menu-' + esc(id) + '" style="display:none;">' +
-      (hasSearch ? '<input type="search" class="ms-search-input" id="search-' + esc(id) + '" placeholder="Cari..." data-ms-search="' + esc(id) + '">' : '') +
-      '<div class="ms-actions-bar">' +
-      '<button type="button" class="ms-btn-link" data-act="ms-clear" data-target="' + esc(id) + '">Kosongkan</button>' +
-      '<button type="button" class="ms-btn-link" data-act="ms-select-all" data-target="' + esc(id) + '">Pilih Semua</button>' +
+        (hasSearch ? '<input type="search" class="ms-search-input" id="search-' + esc(id) + '" placeholder="Cari opsi" aria-label="Cari opsi" data-ms-search="' + esc(id) + '">' : '') +
+        '<div class="ms-actions-bar">' +
+          '<button type="button" class="ms-btn-link" data-act="ms-clear" data-target="' + esc(id) + '">Kosongkan</button>' +
+          '<button type="button" class="ms-btn-link" data-act="ms-select-all" data-target="' + esc(id) + '">Pilih Semua</button>' +
+        '</div>' +
+        '<div class="ms-list" id="list-' + esc(id) + '">' +
+          itemsHtml +
+        '</div>' +
+        '<div class="ms-footer">' +
+          '<button type="button" class="btn btn-small btn-primary btn-block" data-act="close-ms" data-target="' + esc(id) + '">Selesai</button>' +
+        '</div>' +
       '</div>' +
-      '<div class="ms-list" id="list-' + esc(id) + '">' +
-      itemsHtml +
-      '</div>' +
-      '<div class="ms-footer">' +
-      '<button type="button" class="btn btn-small btn-yellow btn-block" data-act="close-ms" data-target="' + esc(id) + '">Selesai</button>' +
-      '</div>' +
-      '</div>' +
-      '</div>';
+    '</div>';
   }
 
   function photoField(key, label, hint, required = false) {
-    return '<div class="field ' + (required ? 'field-full' : '') + '"><label>' + esc(label) + (required ? ' <span aria-hidden="true">*</span>' : '') + '</label><input class="photo-input" type="file" name="photo_' + esc(key) + '" data-photo="' + esc(key) + '" accept="image/*" capture="environment"' + (required ? ' required' : '') + '><div class="form-note">' + esc(hint || 'Foto dikompres otomatis sebelum disimpan.') + '</div><div data-preview-for="' + esc(key) + '"></div></div>';
+    return '<div class="field ' + (required ? 'field-full' : '') + '"><label for="photo-' + esc(key) + '">' + esc(label) + (required ? ' <span aria-hidden="true">*</span>' : '') + '</label><input class="photo-input" id="photo-' + esc(key) + '" aria-describedby="photo-hint-' + esc(key) + '" type="file" name="photo_' + esc(key) + '" data-photo="' + esc(key) + '" accept="image/*" capture="environment"' + (required ? ' required' : '') + '><div class="form-note" id="photo-hint-' + esc(key) + '">' + esc(hint || 'Foto dikompres otomatis sebelum disimpan.') + '</div><div data-preview-for="' + esc(key) + '"></div></div>';
   }
   function signatureField() {
-    return '<div class="field field-full signature-field"><label>Tanda tangan pemilik / PIC outlet</label><p class="form-note">Digambar langsung pada layar. Wajib jika outlet dinyatakan qualified. Bila pemilik tidak tersedia, pilih Tidak qualified dan jelaskan alasannya.</p><canvas id="owner-signature" class="signature-canvas" width=720 height=300 aria-label="Area tanda tangan pemilik outlet"></canvas><div class="signature-toolbar"><span id="signature-status" class="photo-meta">' + (state.signatureDrawn ? 'Tanda tangan siap.' : 'Belum ditandatangani.') + '</span><button type="button" class="btn btn-small btn-plain" data-act="clear-signature">Hapus tanda tangan</button></div></div>';
+    return '<div class="field field-full signature-field"><span class="field-label">Tanda tangan pemilik / PIC outlet</span><p class="form-note">Digambar langsung pada layar. Wajib jika outlet dinyatakan qualified. Bila pemilik tidak tersedia, pilih Tidak qualified dan jelaskan alasannya.</p><canvas id="owner-signature" class="signature-canvas" width=720 height=300 aria-label="Area tanda tangan pemilik outlet"></canvas><div class="signature-toolbar"><span id="signature-status" class="photo-meta">' + (state.signatureDrawn ? 'Tanda tangan siap.' : 'Belum ditandatangani.') + '</span><button type="button" class="btn btn-small btn-plain" data-act="clear-signature">Hapus tanda tangan</button></div></div>';
   }
   function setupSignatureCanvas() {
     const canvas = $('#owner-signature'); if (!canvas) return;
@@ -493,18 +508,38 @@
     const point = (event) => { const rect = canvas.getBoundingClientRect(); return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height }; };
     const updateStatus = (text) => { const status = $('#signature-status'); if (status) status.textContent = text; };
     const finish = () => { if (!drawing) return; drawing = false; state.signatureCapturedAt = new Date().toISOString(); state.signatureData = canvas.toDataURL('image/jpeg', 0.88); state.signatureDrawn = true; updateStatus('Tanda tangan siap.'); };
-    canvas.addEventListener('pointerdown', (event) => { event.preventDefault(); drawing = true; try { canvas.setPointerCapture(event.pointerId); } catch (_) { } const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.2, p.y + 0.2); ctx.stroke(); state.signatureDrawn = true; state.signatureCapturedAt = new Date().toISOString(); updateStatus('Sedang menandatangani…'); });
+    canvas.addEventListener('pointerdown', (event) => { event.preventDefault(); drawing = true; try { canvas.setPointerCapture(event.pointerId); } catch (_) {} const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.2, p.y + 0.2); ctx.stroke(); state.signatureDrawn = true; state.signatureCapturedAt = new Date().toISOString(); updateStatus('Sedang menandatangani…'); });
     canvas.addEventListener('pointermove', (event) => { if (!drawing) return; event.preventDefault(); const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke(); });
     canvas.addEventListener('pointerup', finish); canvas.addEventListener('pointercancel', finish); canvas.addEventListener('lostpointercapture', finish);
   }
-  function section(number, title, content, note) { return '<section class="form-section"><h3><span class="section-number">' + esc(number) + '</span>' + esc(title) + '</h3>' + (note ? '<p class="form-note">' + esc(note) + '</p>' : '') + content + '</section>'; }
-  function pageHead(eyebrow, title, subtitle, right = '') { return '<div class="page-head"><div><div class="eyebrow">' + esc(eyebrow) + '</div><h1>' + esc(title) + '</h1><p>' + esc(subtitle) + '</p></div>' + right + '</div>'; }
+  function section(number, title, content, note) {
+    return '<section class="form-section"><h2><span class="section-number">' + esc(number) + '</span>' + esc(title) + '</h2>' +
+      (note ? '<p class="form-note">' + esc(note) + '</p>' : '') + '<div class="field-grid">' + content + '</div></section>';
+  }
+  function pageHead(title, subtitle, right = '') {
+    return '<header class="page-head"><div><h1 tabindex="-1">' + esc(title) + '</h1>' +
+      (subtitle ? '<p>' + esc(subtitle) + '</p>' : '') + '</div>' + right + '</header>';
+  }
   function metricCard(label, value, target, note) {
-    const amount = Number(value || 0); const percent = target ? pct(amount, target) : 0;
-    return '<div class="stat-card"><div class="stat-label">' + esc(label) + '</div><div class="stat-value">' + fmtNum(amount) + '</div><div class="stat-foot">' + esc(note || (target ? 'Target ' + fmtNum(target) : 'Total tercatat')) + '</div>' + (target ? '<div class="progress"><span style="width:' + percent + '%"></span></div>' : '') + '</div>';
+    const amount = Number(value || 0);
+    return '<div class="stat-card"><div class="stat-label">' + esc(label) + '</div><div class="stat-value">' + fmtNum(amount) + '</div>' +
+      '<div class="stat-foot">' + esc(target ? 'Target ' + fmtNum(target) : note || 'Total tercatat') + '</div>' +
+      (target ? '<div class="progress" role="progressbar" aria-label="' + esc(label) + '" aria-valuenow="' + pct(amount, target) +
+        '" aria-valuetext="' + fmtNum(amount) + ' dari ' + fmtNum(target) + '"><span style="width:' + pct(amount, target) + '%"></span></div>' : '') + '</div>';
+  }
+  function filterButton(action, key, label, active, attribute = 'filter') {
+    return '<button type="button" class="filter-chip' + (active ? ' active' : '') + '" data-act="' + esc(action) +
+      '" data-' + attribute + '="' + esc(key) + '" aria-pressed="' + active + '">' + esc(label) + '</button>';
+  }
+  function tableMarkup(headers, rows, label) {
+    return '<div class="table-wrap"><table aria-label="' + esc(label) + '" role="table"><thead role="rowgroup"><tr role="row">' +
+      headers.map((header) => '<th scope="col" role="columnheader">' + esc(header) + '</th>').join('') +
+      '</tr></thead><tbody role="rowgroup">' + rows.map((cells) => '<tr role="row">' + cells.map((cell, i) =>
+        '<td role="cell"><span class="cell-label" aria-hidden="true">' + esc(headers[i]) + '</span><div class="cell-value">' + cell + '</div></td>'
+      ).join('') + '</tr>').join('') + '</tbody></table></div>';
   }
   function syncBanner() {
-    return '<div id="sync-banner" class="sync-banner ' + (state.queueCount ? '' : 'hidden') + '"><div><strong id="sync-count">' + state.queueCount + ' kiriman menunggu sinkronisasi</strong><span class="muted">Data tetap tersimpan di perangkat hingga terkirim.</span></div><button class="btn btn-small btn-yellow" data-act="sync" ' + (state.online ? '' : 'disabled') + '>' + (state.syncing ? 'Menyinkronkan…' : 'Sinkronkan') + '</button></div>';
+    return '<div id="sync-banner" class="sync-banner ' + (state.queueCount ? '' : 'hidden') + '"><div><strong id="sync-count">' + state.queueCount + ' kiriman menunggu sinkronisasi</strong><span class="muted">Data tetap tersimpan di perangkat hingga terkirim.</span></div><button class="btn btn-small btn-primary" data-act="sync" ' + (state.online ? '' : 'disabled') + '>' + (state.syncing ? 'Menyinkronkan…' : 'Sinkronkan') + '</button></div>';
   }
   function navIcon(page) {
     const icons = {
@@ -513,106 +548,137 @@
       input: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h-3a2 2 0 0 0-2 2v14h18V6a2 2 0 0 0-2-2h-3"/><rect x="8" y="2" width="8" height="5" rx="1.5"/><path d="M8 12h8M8 16h5"/></svg>',
       reports: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
       beatplan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>',
-      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-      createOutlet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
-      more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
-      hamburger: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
-      collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
-      expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
-      close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
+      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      createOutlet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+      more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>'
     };
     return icons[page] || icons.more;
   }
-  function navButton(key, label, page) {
-    const active = state.page === page || (page === 'more' && ['more', 'users', 'beatplan', 'createOutlet'].includes(state.page));
+  function navButton(page, label) {
+    const active = state.page === page || (page === 'home' && ['input', 'nooForm'].includes(state.page)) || (page === 'more' && ['more','users','beatplan','createOutlet'].includes(state.page));
     return '<button class="nav-btn ' + (active ? 'active' : '') + '" data-act="nav" data-page="' + page + '" aria-current="' + (active ? 'page' : 'false') + '"><span class="nav-icon" aria-hidden="true">' + navIcon(page) + '</span><span class="nav-label">' + esc(label) + '</span></button>';
   }
-  function sidebarItem(page, label, activePages) {
-    const isMatch = Array.isArray(activePages) ? activePages.includes(state.page) : state.page === page;
-    return '<button type="button" class="sidebar-item ' + (isMatch ? 'active' : '') + '" data-act="nav" data-page="' + page + '" title="' + esc(label) + '" aria-current="' + (isMatch ? 'page' : 'false') + '"><span class="sidebar-icon" aria-hidden="true">' + navIcon(page) + '</span><span class="sidebar-label">' + esc(label) + '</span></button>';
-  }
-  function pageTitleLabel(page) {
-    const labels = {
-      home: 'Dashboard & Beranda',
-      outlets: 'Daftar Outlet & Prospect',
-      input: 'Input Laporan Lapangan',
-      reports: 'Laporan & Evidence',
-      beatplan: 'Rencana Kunjungan',
-      users: 'Manajemen User',
-      createOutlet: 'Tambah Outlet Baru',
-      nooForm: 'NOO · Buka Outlet Baru',
-      more: 'Pengaturan & Akun'
-    };
-    return labels[page] || 'TRW Field Execution';
+  function sidebarLink(page, label, iconKey, matchPages) {
+    const active = (matchPages || [page]).includes(state.page);
+    return '<button class="sidebar-link ' + (active ? 'active' : '') + '" data-act="nav" data-page="' + page + '" title="' + esc(label) + '" aria-label="' + esc(label) + '" aria-current="' + (active ? 'page' : 'false') + '">' +
+      '<span class="nav-icon" aria-hidden="true">' + navIcon(iconKey || page) + '</span>' +
+      '<span class="sidebar-link-text">' + esc(label) + '</span>' +
+    '</button>';
   }
   function loginPage() {
-    return '<div class="login-wrap"><div class="login-card"><div class="brand-line"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-img"><div><div class="brand-title">Direct-to-Retailer</div><div class="eyebrow">Field Execution System</div></div></div><h1>Selamat datang.</h1><p class="subhead">Masuk untuk mencatat aktivitas lapangan, evidence, dan laporan TRW.</p><form data-form="login" autocomplete="on">' + field('username', 'Username', 'text', { required: true, placeholder: 'Masukkan username', full: true }) + field('password', 'Password', 'password', { required: true, placeholder: 'Masukkan password', full: true }) + '<button class="btn btn-primary btn-block" type="submit">Masuk ke aplikasi</button></form><div class="divider"></div><div class="small muted">Gunakan akun yang diberikan Admin. Login tidak sama dengan Check In kehadiran.</div><div class="footer-note">TRW Direct-to-Retailer · ARAIA Group</div></div></div>';
+    return '<main class="login-wrap"><div class="login-card"><div class="brand-line">' +
+      '<img src="icons/trw-logo.png" alt="TRW" class="brand-logo-img"><div><strong>TRW Field</strong><span>Direct-to-Retailer</span></div></div>' +
+      '<h1>Masuk ke TRW Field</h1><p class="subhead">Gunakan akun yang diberikan administrator.</p>' +
+      '<form data-form="login" autocomplete="on">' +
+      field('username', 'Username', 'text', { required: true, autocomplete: 'username' }) +
+      field('password', 'Password', 'password', { required: true, autocomplete: 'current-password' }) +
+      '<button class="btn btn-primary btn-block" type="submit">Masuk</button></form>' +
+      '<p class="login-note">Kehadiran dicatat secara terpisah melalui Check In.</p></div></main>';
   }
   function shell(content) {
-    const role = (state.user && state.user.role) || '';
-    const isClient = role === 'CLIENT';
-    const isAdminGroup = ['ADMIN', 'PM', 'TL'].includes(role);
-    const fullName = (state.user && (state.user.full_name || state.user.username)) || 'User';
-    const initial = esc(fullName.slice(0, 1).toUpperCase());
+    const user = state.user || {};
+    const role = user.role || '';
+    const navigation = navButton('home','Beranda') + navButton('outlets','Outlet') + navButton('reports','Laporan') + navButton('more','Menu');
+    const shellClasses = 'app-shell' + (state.sidebarCollapsed ? ' sidebar-collapsed' : '');
+    const initial = esc((user.full_name || user.username || 'U').trim().charAt(0).toUpperCase());
 
-    const sidebarPrimary = sidebarItem('home', 'Beranda', ['home', 'nooForm', 'input']) +
-      sidebarItem('outlets', 'Outlet & Prospect') +
-      sidebarItem('reports', 'Laporan & Evidence');
+    let sidebarNav =
+      sidebarLink('home', 'Beranda', 'home', ['home', 'nooForm', 'input']) +
+      sidebarLink('outlets', 'Outlet & Prospect', 'outlets') +
+      sidebarLink('reports', 'Laporan & Evidence', 'reports');
 
-    let sidebarOps = '';
-    if (isAdminGroup) {
-      sidebarOps += '<div class="sidebar-section-label">Operasional</div>' +
-        sidebarItem('beatplan', 'Rencana Kunjungan') +
-        sidebarItem('createOutlet', 'Tambah Outlet');
-      if (role === 'ADMIN') sidebarOps += sidebarItem('users', 'Manajemen User');
+    if (['ADMIN', 'PM', 'TL'].includes(role)) {
+      sidebarNav += '<div class="sidebar-section-label">Operasional</div>' +
+        sidebarLink('beatplan', 'Rencana Kunjungan', 'beatplan') +
+        sidebarLink('createOutlet', 'Tambah Outlet', 'createOutlet');
     }
+    if (role === 'ADMIN') {
+      sidebarNav += sidebarLink('users', 'Manajemen User', 'users');
+    }
+    sidebarNav += sidebarLink('more', 'Pengaturan & Alat', 'more');
 
-    const sidebarSettings = '<div class="sidebar-section-label">Sistem</div>' + sidebarItem('more', 'Menu & Pengaturan');
+    const collapseIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>';
+    const hamburgerIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+    const logoutIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 
-    const sidebarHtml = '<aside class="app-sidebar" aria-label="Menu navigasi samping">' +
+    const sidebarHtml = '<aside id="navigation-panel" class="app-sidebar" aria-label="Menu navigasi">' +
       '<div class="sidebar-header">' +
-      '<div class="sidebar-brand"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-mini"><div class="sidebar-brand-text"><strong>TRW FIELD</strong><small>DIRECT-TO-RETAILER</small></div></div>' +
-      '<button type="button" class="sidebar-collapse-btn" data-act="toggle-sidebar" title="' + (state.sidebarCollapsed ? 'Perlebar sidebar' : 'Ciutkan sidebar') + '" aria-label="Toggle sidebar">' + (state.sidebarCollapsed ? navIcon('expand') : navIcon('collapse')) + '</button>' +
-      '<button type="button" class="sidebar-close-btn" data-act="close-drawer" aria-label="Tutup menu">' + navIcon('close') + '</button>' +
+        '<div class="sidebar-brand"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-mini"><div class="sidebar-brand-text"><strong>TRW Field</strong><small>Direct-to-Retailer</small></div></div>' +
+        '<button type="button" class="sidebar-toggle-btn icon-btn" data-act="toggle-sidebar" aria-label="Ciutkan navigasi" aria-expanded="true" aria-controls="sidebar-nav">' + collapseIcon + '</button>' +
+        '<button type="button" class="drawer-close btn btn-plain" data-act="close-drawer">Tutup</button>' +
       '</div>' +
-      '<nav class="sidebar-nav">' +
-      '<div class="sidebar-section-label">Menu Utama</div>' +
-      sidebarPrimary + sidebarOps + sidebarSettings +
-      '</nav>' +
+      '<nav id="sidebar-nav" class="sidebar-nav" aria-label="Navigasi utama">' + sidebarNav + '</nav>' +
       '<div class="sidebar-footer">' +
-      '<div class="sidebar-user-chip"><div class="avatar" style="width:34px;height:34px;font-size:13px;border-radius:10px">' + initial + '</div><div class="sidebar-user-meta"><strong>' + esc(fullName) + '</strong><small>' + esc(roleName(role)) + '</small></div></div>' +
+        '<div class="sidebar-user"><div class="avatar">' + initial + '</div><div class="sidebar-user-meta"><strong>' + esc(user.full_name || user.username || 'User') + '</strong><small>' + esc(roleName(role)) + '</small></div></div>' +
+        '<button type="button" class="sidebar-link" data-act="logout" title="Keluar dari aplikasi" aria-label="Keluar dari aplikasi"><span class="nav-icon" aria-hidden="true">' + logoutIcon + '</span><span class="sidebar-logout-label">Keluar</span></button>' +
       '</div>' +
-      '</aside>';
+    '</aside>';
 
-    const navigation = navButton('home', 'Beranda', 'home') + navButton('outlets', 'Outlet', 'outlets') + navButton('reports', 'Laporan', 'reports') + navButton('more', 'Menu', 'more');
-    const layoutClass = 'app-layout' + (state.sidebarCollapsed ? ' sidebar-collapsed' : '') + (state.drawerOpen ? ' sidebar-open' : '');
-
-    return '<div class="' + layoutClass + '">' +
-      '<div class="sidebar-backdrop" data-act="close-drawer"></div>' +
-      sidebarHtml +
-      '<div class="app-main">' +
-      '<header class="topbar ' + (isClient ? 'client-topbar' : '') + '">' +
+    const topbarHtml = '<header class="topbar">' +
       '<div class="topbar-inner">' +
-      '<div class="topbar-left">' +
-      '<button type="button" class="hamburger-btn" data-act="open-drawer" aria-label="Buka menu navigasi">' + navIcon('hamburger') + '</button>' +
-      '<div class="brand-mini"><img src="icons/trw-logo.png" alt="TRW Logo" class="brand-logo-mini"><div>TRW FIELD<small>DIRECT-TO-RETAILER</small></div></div>' +
-      '<div class="topbar-context"><span class="topbar-context-title">' + esc(pageTitleLabel(state.page)) + '</span><span class="topbar-role-badge">' + esc(role) + '</span></div>' +
+        '<div class="topbar-left">' +
+          '<button type="button" class="hamburger-btn icon-btn" data-act="toggle-drawer" aria-label="Buka menu navigasi" aria-expanded="false" aria-controls="navigation-panel">' + hamburgerIcon + '</button>' +
+          '<div class="brand-mini"><img src="icons/trw-logo.png" alt="TRW" class="brand-logo-mini"><strong>TRW Field</strong></div>' +
+          '<span class="desktop-context">' + esc(roleName(role)) + '</span>' +
+        '</div>' +
+        '<div class="top-actions">' +
+          '<span id="network-badge" role="status" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span>' +
+          '<span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '" aria-hidden="true">' + state.queueCount + '</span>' +
+          '<button type="button" class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Muat ulang</button>' +
+        '</div>' +
       '</div>' +
-      '<div class="top-actions">' +
-      '<span id="network-badge" class="status-pill ' + (navigator.onLine ? 'online' : 'offline') + '">' + (navigator.onLine ? 'Online' : 'Offline') + '</span>' +
-      '<span id="queue-badge" class="pill-count ' + (state.queueCount ? '' : 'hidden') + '">' + state.queueCount + '</span>' +
-      '<button class="btn btn-small btn-plain" data-act="refresh" aria-label="Muat ulang data">Refresh</button>' +
+    '</header>';
+
+    return '<div class="' + shellClasses + '">' +
+      '<div class="sidebar-backdrop" aria-hidden="true" data-act="close-drawer"></div>' +
+      sidebarHtml +
+      '<div class="app-workspace">' +
+        topbarHtml +
+        content +
       '</div>' +
-      '</div>' +
-      '</header>' +
-      content +
-      '<nav class="bottom-nav ' + (isClient ? 'client-nav' : '') + '" aria-label="Navigasi utama">' + navigation + '</nav>' +
-      '</div>' +
-      '</div>';
+      '<nav class="bottom-nav" aria-label="Navigasi utama">' + navigation + '</nav>' +
+    '</div>';
   }
+  function updateNavigation() {
+    const shell = $('.app-shell');
+    if (!shell) return;
+    const drawerOpen = state.drawerOpen && tabletNavigation.matches;
+    shell.classList.toggle('drawer-open', drawerOpen);
+    shell.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+    $('.app-workspace', shell).inert = drawerOpen;
+    $('.hamburger-btn', shell).setAttribute('aria-expanded', String(drawerOpen));
+    const sidebarToggle = $('.sidebar-toggle-btn', shell);
+    const sidebarLabel = state.sidebarCollapsed ? 'Perluas navigasi' : 'Ciutkan navigasi';
+    sidebarToggle.title = sidebarLabel;
+    sidebarToggle.setAttribute('aria-label', sidebarLabel);
+    sidebarToggle.setAttribute('aria-expanded', String(!state.sidebarCollapsed));
+  }
+
+  function setDrawer(open) {
+    state.drawerOpen = open;
+    updateNavigation();
+    $(open ? '.drawer-close' : '.hamburger-btn')?.focus();
+  }
+
+  tabletNavigation.addEventListener('change', () => {
+    state.drawerOpen = false;
+    updateNavigation();
+  });
+
   function render() {
     updateQueueState();
-    if (!state.token || !state.user) { APP.innerHTML = loginPage(); return; }
+    if (!state.token || !state.user) {
+      renderedView = 'login';
+      APP.innerHTML = loginPage();
+      return;
+    }
+    const view = state.page + (state.page === 'input' ? ':' + state.inputType : '');
+    const changed = view !== renderedView && renderedView !== '';
+    const focusedControl = document.activeElement;
+    const headingFocused = focusedControl === $('.wrap h1');
+    if (changed) state.drawerOpen = false;
+    renderedView = view;
+
     let page = '';
     switch (state.page) {
       case 'outlets': page = outletsPage(); break;
@@ -625,13 +691,20 @@
       case 'more': page = morePage(); break;
       default: page = homePage();
     }
-    const clientLayout = state.user.role === 'CLIENT' ? ' client-wrap' : '';
-    APP.innerHTML = shell(syncBanner() + '<div class="wrap' + clientLayout + '">' + page + '<div class="footer-note">TRW Field · Versi 1.6.4<br>Foto dan lokasi hanya dikirim saat Anda mengirim laporan atau Check In/Out.</div></div>');
+    APP.innerHTML = shell('<main class="wrap" id="main-content" data-page="' + esc(view) + '">' + syncBanner() + page + '</main>');
+    updateNavigation();
     updateNetworkBadge();
     setupSignatureCanvas();
     setupVisitConditionals();
     setupBeatPlanner();
     initDashboardMap();
+    if (changed) window.scrollTo(0, 0);
+    if (changed || headingFocused) $('.wrap h1')?.focus({ preventScroll: true });
+    else if (focusedControl.matches('.filter-chip')) {
+      const { act, filter, tab } = focusedControl.dataset;
+      $$('.filter-chip').find((chip) => chip.dataset.act === act && chip.dataset.filter === filter && chip.dataset.tab === tab)?.focus({ preventScroll: true });
+    }
+    if (state.drawerOpen && tabletNavigation.matches) $('.drawer-close')?.focus();
   }
 
   function setupVisitConditionals() {
@@ -807,47 +880,35 @@
     const fmList = (state.dashboard && state.dashboard.fmLocations) || state.fmLocations || [];
     const fmCount = fmList.length;
 
+    const filters = [
+      ['all', 'Semua', total + fmCount], ['fm', 'Petugas FM', fmCount],
+      ['qualified', 'Qualified', qualCount], ['surveyed', 'Survey selesai', srvCount], ['prospect', 'Prospect', prospectCount]
+    ];
     return '<section class="card dashboard-map-card">' +
-      '<div class="dashboard-map-header">' +
-      '<div>' +
-      '<div class="eyebrow">MONITORING GEOGRAFIS</div>' +
-      '<h2>Dashboard Live Map Survey FM</h2>' +
-      '<p>Peta sebaran outlet, status qualification, hasil survey, serta posisi langsung petugas FM di lapangan.</p>' +
-      '</div>' +
-      '<div class="dashboard-map-stats">' +
-      '<span class="dashboard-map-badge live">LIVE TRACKING</span>' +
-      '<span class="dashboard-map-badge"><strong>' + fmtNum(total) + '</strong> Outlet</span>' +
-      '<span class="dashboard-map-badge"><strong>' + fmtNum(fmCount) + '</strong> FM Aktif</span>' +
-      '</div>' +
-      '</div>' +
-      '<div class="dashboard-map-filters">' +
-      '<button type="button" class="filter-chip ' + (currentMapFilter === 'all' ? 'active' : '') + '" data-act="map-filter" data-filter="all">Semua (' + fmtNum(total + fmCount) + ')</button>' +
-      '<button type="button" class="filter-chip ' + (currentMapFilter === 'fm' ? 'active' : '') + '" data-act="map-filter" data-filter="fm">🛵 Petugas FM (' + fmtNum(fmCount) + ')</button>' +
-      '<button type="button" class="filter-chip ' + (currentMapFilter === 'qualified' ? 'active' : '') + '" data-act="map-filter" data-filter="qualified">🟢 Qualified (' + fmtNum(qualCount) + ')</button>' +
-      '<button type="button" class="filter-chip ' + (currentMapFilter === 'surveyed' ? 'active' : '') + '" data-act="map-filter" data-filter="surveyed">🟡 Survey Selesai (' + fmtNum(srvCount) + ')</button>' +
-      '<button type="button" class="filter-chip ' + (currentMapFilter === 'prospect' ? 'active' : '') + '" data-act="map-filter" data-filter="prospect">🔵 Prospect (' + fmtNum(prospectCount) + ')</button>' +
-      '</div>' +
-      '<div id="' + mapId + '" class="dashboard-map-container"></div>' +
-      '</section>';
+      '<div class="card-head"><div><h2>Peta outlet dan petugas FM</h2><p>Lokasi outlet, status survey, dan posisi terakhir petugas.</p></div>' +
+      '<span class="status-pill ' + (fmCount ? 'online">Pelacakan aktif' : '">Belum ada posisi FM') + '</span></div>' +
+      '<div class="filter-row" role="group" aria-label="Filter peta">' +
+        filters.map(([id, label, count]) => filterButton('map-filter', id, label + ' (' + fmtNum(count) + ')', currentMapFilter === id)).join('') +
+      '</div><div id="' + mapId + '" class="dashboard-map-container" role="region" aria-label="Peta outlet dan petugas FM"></div></section>';
   }
 
   function initDashboardMap(mapId) {
     const targetId = mapId || (state.user && state.user.role === 'CLIENT' ? 'dashboard-map-client' : 'dashboard-map');
     const container = document.getElementById(targetId);
-    if (!container || typeof L === 'undefined') return;
-
     if (currentLeafletMap) {
-      try { currentLeafletMap.remove(); } catch (_) { }
+      try { currentLeafletMap.remove(); } catch (_) {}
       currentLeafletMap = null;
     }
+    if (!container || typeof L === 'undefined') return;
 
     const defaultCenter = [-6.2088, 106.8456];
     const map = L.map(container, { scrollWheelZoom: false }).setView(defaultCenter, 11);
     currentLeafletMap = map;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
     }).addTo(map);
 
     const outlets = state.outletList || [];
@@ -871,80 +932,78 @@
 
     const bounds = [];
 
-    if (currentMapFilter !== 'fm') {
-      outlets.forEach((o, index) => {
-        const isQual = o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED';
-        const isProspect = o.is_prospect || !o.segment_final || String(o.status).toUpperCase().includes('UNVERIFIED') || String(o.status).toUpperCase().includes('BELUM');
-        const hasVisit = visitMap.has(String(o.outlet_id));
-        const visit = visitMap.get(String(o.outlet_id));
+    if (currentMapFilter !== 'fm') { outlets.forEach((o, index) => {
+      const isQual = o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED';
+      const isProspect = o.is_prospect || !o.segment_final || String(o.status).toUpperCase().includes('UNVERIFIED') || String(o.status).toUpperCase().includes('BELUM');
+      const hasVisit = visitMap.has(String(o.outlet_id));
+      const visit = visitMap.get(String(o.outlet_id));
 
-        if (currentMapFilter === 'qualified' && !isQual) return;
-        if (currentMapFilter === 'surveyed' && !hasVisit) return;
-        if (currentMapFilter === 'prospect' && !isProspect) return;
+      if (currentMapFilter === 'qualified' && !isQual) return;
+      if (currentMapFilter === 'surveyed' && !hasVisit) return;
+      if (currentMapFilter === 'prospect' && !isProspect) return;
 
-        let lat = Number(o.lat || (visit && visit.lat) || 0);
-        let lng = Number(o.lng || (visit && visit.lng) || 0);
+      let lat = Number(o.lat || (visit && visit.lat) || 0);
+      let lng = Number(o.lng || (visit && visit.lng) || 0);
 
-        if (!lat || !lng || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
-          const cityKey = String(o.city || '').toLowerCase();
-          let foundCity = null;
-          for (const k in cityCoords) {
-            if (cityKey.includes(k)) { foundCity = cityCoords[k]; break; }
-          }
-          if (!foundCity) foundCity = defaultCenter;
-          const jitterLat = (Math.sin((index + 1) * 17) * 0.04);
-          const jitterLng = (Math.cos((index + 1) * 23) * 0.05);
-          lat = foundCity[0] + jitterLat;
-          lng = foundCity[1] + jitterLng;
+      if (!lat || !lng || isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+        const cityKey = String(o.city || '').toLowerCase();
+        let foundCity = null;
+        for (const k in cityCoords) {
+          if (cityKey.includes(k)) { foundCity = cityCoords[k]; break; }
         }
+        if (!foundCity) foundCity = defaultCenter;
+        const jitterLat = (Math.sin((index + 1) * 17) * 0.04);
+        const jitterLng = (Math.cos((index + 1) * 23) * 0.05);
+        lat = foundCity[0] + jitterLat;
+        lng = foundCity[1] + jitterLng;
+      }
 
-        let colorClass = 'pin-gray';
-        let pinSymbol = '●';
-        let tagClass = 'gray';
-        let statusLabel = o.status || 'PROSPECT';
+      let colorClass = 'pin-gray';
+      let pinSymbol = 'O';
+      let tagClass = 'gray';
+      let statusLabel = o.status || 'PROSPECT';
 
-        if (isQual) {
-          colorClass = 'pin-green';
-          pinSymbol = '✓';
-          tagClass = 'green';
-          statusLabel = 'QUALIFIED';
-        } else if (hasVisit) {
-          colorClass = 'pin-yellow';
-          pinSymbol = '★';
-          tagClass = 'yellow';
-          statusLabel = 'SURVEY SELESAI';
-        } else if (isProspect) {
-          colorClass = 'pin-blue';
-          pinSymbol = '◆';
-          tagClass = 'blue';
-          statusLabel = 'PROSPECT';
-        }
+      if (isQual) {
+        colorClass = 'pin-green';
+        pinSymbol = 'Q';
+        tagClass = 'green';
+        statusLabel = 'QUALIFIED';
+      } else if (hasVisit) {
+        colorClass = 'pin-yellow';
+        pinSymbol = 'S';
+        tagClass = 'yellow';
+        statusLabel = 'SURVEY SELESAI';
+      } else if (isProspect) {
+        colorClass = 'pin-blue';
+        pinSymbol = 'P';
+        tagClass = 'blue';
+        statusLabel = 'PROSPECT';
+      }
 
-        const icon = L.divIcon({
-          className: 'map-custom-marker',
-          html: '<div class="map-pin ' + colorClass + '"><div class="map-pin-inner">' + pinSymbol + '</div></div>',
-          iconSize: [30, 30],
-          iconAnchor: [15, 30],
-          popupAnchor: [0, -28]
-        });
-
-        const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
-        const address = [o.address, o.area, o.city].filter(Boolean).join(', ') || 'Alamat dalam proses verifikasi';
-        const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng);
-
-        const popupHtml = '<div class="map-popup-content">' +
-          '<div class="map-popup-tags"><span class="map-popup-tag ' + tagClass + '">' + esc(statusLabel) + '</span><span class="map-popup-tag gray">' + esc(segment) + '</span></div>' +
-          '<div class="map-popup-title">' + esc(o.outlet_name || 'Outlet') + '</div>' +
-          '<div class="map-popup-meta">' + esc(o.city || '') + (o.area ? ' · ' + esc(o.area) : '') + '</div>' +
-          '<p style="margin:4px 0 8px;color:#555;font-size:11px;">' + esc(address) + '</p>' +
-          (visit ? '<div style="font-size:10px;color:#777;margin-bottom:6px;">Surveyor: ' + esc(visit.user_name || userName(visit.user_id) || 'FM') + ' (' + fmtDate(visit.visit_date || visit.created_at) + ')</div>' : '') +
-          '<a href="' + mapsUrl + '" target="_blank" rel="noopener" class="map-popup-link">Buka di Google Maps ↗</a>' +
-          '</div>';
-
-        L.marker([lat, lng], { icon: icon }).bindPopup(popupHtml).addTo(map);
-        bounds.push([lat, lng]);
+      const icon = L.divIcon({
+        className: 'map-custom-marker',
+        html: '<div class="map-pin ' + colorClass + '"><div class="map-pin-inner">' + pinSymbol + '</div></div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 30],
+        popupAnchor: [0, -28]
       });
-    }
+
+      const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
+      const address = [o.address, o.area, o.city].filter(Boolean).join(', ') || 'Alamat dalam proses verifikasi';
+      const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng);
+
+      const popupHtml = '<div class="map-popup-content">' +
+        '<div class="map-popup-tags"><span class="map-popup-tag ' + tagClass + '">' + esc(statusLabel) + '</span><span class="map-popup-tag gray">' + esc(segment) + '</span></div>' +
+        '<div class="map-popup-title">' + esc(o.outlet_name || 'Outlet') + '</div>' +
+        '<div class="map-popup-meta">' + esc(o.city || '') + (o.area ? ' · ' + esc(o.area) : '') + '</div>' +
+        '<p class="map-popup-meta">' + esc(address) + '</p>' +
+        (visit ? '<div class="map-popup-meta">Surveyor: ' + esc(visit.user_name || userName(visit.user_id) || 'FM') + ' (' + fmtDate(visit.visit_date || visit.created_at) + ')</div>' : '') +
+        '<a href="' + mapsUrl + '" target="_blank" rel="noopener" class="map-popup-link">Buka di Google Maps</a>' +
+      '</div>';
+
+      L.marker([lat, lng], { icon: icon, title: o.outlet_name || 'Outlet', alt: statusLabel }).bindPopup(popupHtml).addTo(map);
+      bounds.push([lat, lng]);
+    }); }
 
     // Render FM Live Markers when filter is 'all' or 'fm'
     if (currentMapFilter === 'all' || currentMapFilter === 'fm') {
@@ -959,7 +1018,7 @@
 
         const fmIcon = L.divIcon({
           className: 'map-custom-marker',
-          html: '<div class="map-pin pin-fm"><div class="fm-marker-avatar">' + esc(initial) + '</div><span class="fm-marker-pulse"></span></div>',
+          html: '<div class="fm-marker-avatar">' + esc(initial) + '</div>',
           iconSize: [34, 34],
           iconAnchor: [17, 34],
           popupAnchor: [0, -32]
@@ -969,25 +1028,25 @@
         const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng);
 
         const fmPopupHtml = '<div class="map-popup-content">' +
-          '<div class="map-popup-tags"><span class="map-popup-tag live">🛵 PETUGAS FM</span>' + statusTag + '</div>' +
+          '<div class="map-popup-tags"><span class="map-popup-tag live">Petugas FM</span>' + statusTag + '</div>' +
           '<div class="map-popup-title">' + esc(fm.full_name || fm.username) + '</div>' +
           '<div class="map-popup-meta">Role: ' + esc(roleName(fm.role || 'FM')) + '</div>' +
-          (fm.active_outlet_name ? '<p style="margin:4px 0 6px;color:#1b5e20;font-size:12px;font-weight:600;">📍 Sedang di outlet: ' + esc(fm.active_outlet_name) + '</p>' : '') +
-          '<div style="font-size:10px;color:#777;margin:4px 0 8px;">Pembaruan: ' + esc(fmtDateTime(fm.updated_at)) + (fm.accuracy ? ' (Akurasi: ±' + Math.round(fm.accuracy) + 'm)' : '') + '</div>' +
-          '<a href="' + mapsUrl + '" target="_blank" rel="noopener" class="map-popup-link">Buka Lokasi di Google Maps ↗</a>' +
-          '</div>';
+          (fm.active_outlet_name ? '<p class="map-popup-meta">Sedang di outlet: ' + esc(fm.active_outlet_name) + '</p>' : '') +
+          '<div class="map-popup-meta">Pembaruan: ' + esc(fmtDateTime(fm.updated_at)) + (fm.accuracy ? ' (Akurasi: ±' + Math.round(fm.accuracy) + 'm)' : '') + '</div>' +
+          '<a href="' + mapsUrl + '" target="_blank" rel="noopener" class="map-popup-link">Buka Lokasi di Google Maps</a>' +
+        '</div>';
 
-        L.marker([lat, lng], { icon: fmIcon, zIndexOffset: 1000 }).bindPopup(fmPopupHtml).addTo(map);
+        L.marker([lat, lng], { icon: fmIcon, zIndexOffset: 1000, title: fm.full_name || fm.username || 'Petugas FM', alt: 'Petugas FM' }).bindPopup(fmPopupHtml).addTo(map);
         bounds.push([lat, lng]);
       });
     }
 
     if (bounds.length) {
-      try { map.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 }); } catch (_) { }
+      try { map.fitBounds(bounds, { padding: [35, 35], maxZoom: 14 }); } catch (_) {}
     }
 
     setTimeout(() => {
-      try { map.invalidateSize(); } catch (_) { }
+      try { map.invalidateSize(); } catch (_) {}
     }, 250);
   }
 
@@ -995,22 +1054,31 @@
     if (state.user && state.user.role === 'CLIENT') return clientHomePage();
     if (state.user && state.user.role === 'FM') return fmHomePage();
     const m = (state.dashboard && state.dashboard.metrics) || {};
-    const targets = (state.dashboard && state.dashboard.targets) || { prospects: 250, uniqueOutlets: 180, fmVisits: 360, spgDays: 72, interactions: 1080 };
-    const isClient = state.user.role === 'CLIENT';
+    const targets = (state.dashboard && state.dashboard.targets) || { prospects:250, uniqueOutlets:180, fmVisits:360, spgDays:72, interactions:1080 };
     const open = state.openAttendance;
-    const attendance = isClient
-      ? '<div class="card"><div class="eyebrow">Akses client</div><h2>Dashboard read-only</h2><p class="muted small">Akun client dapat melihat progress, outlet, dan laporan. Pencatatan kehadiran serta input lapangan hanya untuk tim operasional.</p><button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan</button></div>'
-      : '<div class="card attendance-card"><div class="card-head"><div><div class="eyebrow">Kehadiran lapangan</div><h2>' + (open ? 'Anda sedang Check In' : 'Mulai hari kerja') + '</h2><p class="muted small">Login/Logout hanya membuka sesi aplikasi. Check In/Out mencatat waktu, foto, dan lokasi.</p></div><span class="tag ' + (open ? 'green' : 'gray') + '">' + (open ? 'AKTIF' : 'BELUM CHECK IN') + '</span></div>' + (open ? '<div class="notice success"><strong>Check In:</strong> ' + esc(fmtDateTime(open.checkin_at || open.at)) + '<br><span class="small">ID: ' + esc(open.attendance_id) + '</span></div><button class="btn btn-primary btn-block" data-act="checkout">Check Out dengan Foto + GPS</button>' : '<button class="btn btn-yellow btn-block" data-act="checkin">Check In dengan Foto + GPS</button>') + '<div class="form-note">Akurasi GPS harus 150 meter atau lebih baik. Ambil foto baru saat Check In dan Check Out.</div></div>';
-    let actions = '<button class="action-tile primary-tile" data-act="nav" data-page="outlets"><strong>Lihat outlet</strong><small>Temukan outlet sasaran dan status qualification.</small></button>';
-    if (!isClient) actions += '<button class="action-tile" data-act="start-input"><strong>Isi laporan FM</strong><small>Visit, qualification, POSM, edukasi, dan survey.</small></button>';
-    actions += '<button class="action-tile" data-act="nav" data-page="reports"><strong>Lihat laporan</strong><small>Rekap dan aktivitas terakhir.</small></button>';
-    if (state.user.role === 'SPG') actions += '<button class="action-tile" data-act="select-form" data-form-type="activation"><strong>SPG activation</strong><small>Hanya di outlet qualified.</small></button><button class="action-tile" data-act="select-form" data-form-type="interaction"><strong>End-user interaction</strong><small>Catat interaksi, intent dan lead.</small></button>';
-    const quick = '<div class="card"><div class="card-head"><div><h2>' + (isClient ? 'Menu utama' : 'Aksi cepat') + '</h2><p class="muted small">' + (isClient ? 'Akses pantau tanpa mengubah data operasional.' : 'Pilih langkah berikutnya.') + '</p></div></div><div class="action-grid">' + actions + '</div></div>';
-    const kpis = '<div class="card"><div class="card-head"><div><h2>Progress program</h2><p class="muted small">Target kerja terpisah sesuai SOW dan revised execution plan.</p></div><span class="tag yellow">PROGRAM KPI</span></div><div class="grid grid-3">' + metricCard('Prospect', m.prospectCount, targets.prospects, 'Target database awal') + metricCard('Outlet qualified', m.qualifiedUnique, targets.uniqueOutlets, 'Outlet lolos qualification') + metricCard('FM visits', m.fmVisits, targets.fmVisits, 'Kunjungan, bukan outlet unik') + metricCard('SPG activation days', m.spgDays, targets.spgDays, 'Jumlah hari aktivasi') + metricCard('End-user interactions', m.interactions, targets.interactions, 'Interaksi, bukan transaksi') + metricCard('Open issues', m.openIssues, null, 'Perlu tindak lanjut') + '</div><div class="form-note">Target: 250 prospect · 180 outlet unik · 360 FM visits · 72 SPG-days · 1.080 end-user interactions. Angka aktual ditampilkan apa adanya, bukan data dummy.</div></div>';
-    const notes = '<div class="card"><h3>Standar program</h3><div class="report-row"><strong>1. Evidence dahulu</strong><p>Foto dan lokasi wajib untuk Check In/Out serta evidence outlet sebelum qualification.</p></div><div class="report-row"><strong>2. SPG setelah qualification</strong><p>Aktivasi SPG hanya dapat disimpan untuk outlet yang sudah qualified dan memiliki evidence.</p></div><div class="report-row"><strong>3. Cut-off 20:00 WIB</strong><p>Pastikan laporan tersinkron sebelum batas waktu harian.</p></div></div>';
-    return pageHead('BERANDA', 'Halo, ' + (state.user.full_name || state.user.username).split(' ')[0] + '.', roleName(state.user.role) + ' · ' + fmtDate(new Date().toISOString())) + '<div class="home-layout"><div>' + attendance + quick + '</div><div>' + kpis + mapCardHtml('dashboard-map') + notes + '</div></div>';
+    const attendance = '<section class="card attendance-card"><div class="card-head"><h2>Kehadiran</h2>' +
+      '<span class="tag ' + (open ? 'green">Check In aktif' : 'gray">Belum Check In') + '</span></div>' +
+      (open ? '<p class="attendance-time"><strong>' + esc(fmtDateTime(open.checkin_at || open.at)) + '</strong> <span class="muted">Waktu Check In</span></p>' +
+        '<p class="small muted">ID ' + esc(open.attendance_id) + '</p><button class="btn btn-primary btn-block" data-act="checkout">Check Out dengan foto dan GPS</button>' :
+        '<p class="small muted">Siapkan foto baru dan pastikan akurasi GPS 150 meter atau lebih baik.</p><button class="btn btn-primary btn-block" data-act="checkin">Check In dengan foto dan GPS</button>') +
+      '</section>';
+    let actions = '<button class="action-tile" data-act="nav" data-page="outlets"><strong>Lihat outlet</strong><small>Cari outlet dan periksa statusnya.</small></button>';
+    if (state.user.role !== 'SPG') actions += '<button class="action-tile" data-act="start-input"><strong>Isi laporan FM</strong><small>Kunjungan, kualifikasi, POSM, edukasi, dan survey.</small></button>';
+    actions += '<button class="action-tile" data-act="nav" data-page="reports"><strong>Lihat laporan</strong><small>Rekap periode dan aktivitas terbaru.</small></button>';
+    if (state.user.role === 'SPG') actions += '<button class="action-tile" data-act="start-input"><strong>Aktivasi SPG</strong><small>Catat aktivasi di outlet qualified.</small></button><button class="action-tile" data-act="select-form" data-form-type="interaction"><strong>Interaksi konsumen</strong><small>Catat minat beli dan lead.</small></button>';
+    const quick = '<section class="card"><h2>Aksi cepat</h2><div class="action-grid">' + actions + '</div></section>';
+    const kpis = '<section class="card"><div class="card-head"><div><h2>Progres program</h2><p>Realisasi terhadap target program.</p></div></div><div class="grid grid-3 metric-grid">' +
+      metricCard('Prospect', m.prospectCount, targets.prospects) + metricCard('Outlet qualified', m.qualifiedUnique, targets.uniqueOutlets) +
+      metricCard('Kunjungan FM', m.fmVisits, targets.fmVisits) + metricCard('Hari aktivasi SPG', m.spgDays, targets.spgDays) +
+      metricCard('Interaksi konsumen', m.interactions, targets.interactions) + metricCard('Kendala terbuka', m.openIssues, null, 'Perlu tindak lanjut') + '</div></section>';
+    const notes = '<section class="card operating-notes"><h2>Standar program</h2>' +
+      '<div class="report-row"><strong>Bukti kunjungan</strong><p>Sertakan foto dan lokasi saat Check In/Out. Lengkapi bukti outlet sebelum kualifikasi.</p></div>' +
+      '<div class="report-row"><strong>Aktivasi SPG</strong><p>Aktivasi hanya dapat disimpan untuk outlet qualified yang memiliki bukti.</p></div>' +
+      '<div class="report-row"><strong>Batas laporan 20.00 WIB</strong><p>Pastikan laporan tersinkron sebelum batas waktu harian.</p></div></section>';
+    return pageHead('Halo, ' + (state.user.full_name || state.user.username).split(' ')[0], fmtDate(new Date().toISOString())) +
+      '<div class="home-layout"><div class="home-side">' + attendance + quick + '</div><div class="home-main">' + kpis +
+      mapCardHtml('dashboard-map') + '</div><div class="home-standards">' + notes + '</div></div>';
   }
-
 
   function fmHomePage() {
     const route = state.fmRoute;
@@ -1023,40 +1091,26 @@
     const progress = total ? Math.min(100, Math.round(completed / total * 100)) : 0;
     const active = state.openAttendance || (route && route.openAttendance) || null;
     const activeItem = active ? items.find((item) => String(item.outlet_id) === String(active.outlet_id)) : null;
-    const dateLabel = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'Asia/Jakarta' }).format(new Date()).toUpperCase();
+    const dateLabel = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'Asia/Jakarta' }).format(new Date());
     const greeting = (state.user.full_name || state.user.username || 'FM').trim().split(/\s+/)[0];
     const statsHtml = '<div class="fm-stat-grid">' +
       '<div class="fm-stat"><span>Kunjungan</span><strong>' + fmtNum(total) + '</strong></div>' +
       '<div class="fm-stat"><span>Selesai</span><strong>' + fmtNum(completed) + '</strong></div>' +
       '<div class="fm-stat"><span>Interaksi</span><strong>' + fmtNum(interactions) + '</strong></div>' +
       '<div class="fm-stat"><span>Evidence</span><strong>' + fmtNum(evidence) + '</strong></div>' +
-      '</div>';
-    const progressHtml = '<section class="card fm-progress-card"><div class="eyebrow">PROGRES HARI INI</div>' +
-      '<div class="fm-progress-heading"><strong>' + fmtNum(completed) + ' dari ' + fmtNum(total) + ' selesai</strong><b>' + progress + '%</b></div>' +
-      '<div class="fm-progress-track"><span style="width:' + progress + '%"></span></div>' + statsHtml +
-      '</section>';
+    '</div>';
+    const progressHtml = '<section class="card fm-progress-card"><div class="fm-progress-heading">' +
+      '<div><h2>Progres hari ini</h2><p>' + fmtNum(completed) + ' dari ' + fmtNum(total) + ' kunjungan selesai</p></div><strong>' + progress + '%</strong></div>' +
+      '<div class="fm-progress-track" role="progressbar" aria-label="Kunjungan selesai" aria-valuenow="' + progress + '"><span style="width:' + progress + '%"></span></div>' +
+      statsHtml + '</section>';
 
-    const nooCardHtml = '<section class="card fm-noo-card">' +
-      '<div class="fm-noo-header">' +
-      '<div class="fm-noo-icon">🏪</div>' +
-      '<div>' +
-      '<div class="fm-noo-badge">MODUL KHUSUS FM</div>' +
-      '<h3 style="margin:2px 0 4px;font-size:16px;">NOO · Buka Outlet Baru & Survey</h3>' +
-      '<p style="margin:0;font-size:12px;color:rgba(255,255,255,0.85);line-height:1.4;">' +
-      'Temukan outlet prospek baru di lapangan? Wajib Check In lokasi dahulu, daftarkan outlet (NOO), dan langsung lakukan survey.' +
-      '</p>' +
-      '</div>' +
-      '</div>' +
-      '<button type="button" class="btn btn-yellow btn-block" style="margin-top:12px;font-weight:700;" data-act="start-noo">' +
-      '➕ DAFTARKAN OUTLET BARU (NOO) & SURVEY' +
-      '</button>' +
-      '</section>';
+    const nooAction = '<button type="button" class="btn btn-plain" data-act="start-noo">Daftarkan outlet baru (NOO)</button>';
 
     let routeContent = '';
     if (!route) {
       routeContent = '<div class="card fm-empty"><strong>Memuat rencana kunjungan…</strong><p>Rute hari ini sedang diambil dari sistem.</p></div>';
     } else if (!items.length) {
-      routeContent = '<div class="card fm-empty"><strong>Belum ada penugasan rencana kunjungan hari ini</strong><p>Belum ada rute terjadwal dari TL/Admin. Anda tetap dapat melakukan kunjungan lapangan secara mandiri menggunakan modul <b>DAFTARKAN OUTLET BARU (NOO) & SURVEY</b> di atas.</p></div>';
+      routeContent = '<div class="card fm-empty"><strong>Belum ada penugasan rencana kunjungan hari ini</strong><p>TL atau Admin belum menetapkan rute. Gunakan pendaftaran outlet baru (NOO) untuk mencatat kunjungan mandiri.</p></div>';
     } else {
       const hasOtherOpen = Boolean(active);
       routeContent = '<div class="fm-route-list">' + items.map((item, index) => {
@@ -1064,15 +1118,15 @@
         const isCompleted = item.status === 'COMPLETED';
         const isPlanned = item.status === 'PLANNED';
         const firstPending = !hasOtherOpen && isPlanned && items.slice(0, index).every((prior) => prior.status !== 'PLANNED');
-        const badge = isActive ? '<span class="fm-route-badge ongoing">SEDANG DIKUNJUNGI</span>' : isCompleted ? '<span class="fm-route-badge completed">COMPLETED</span>' : firstPending ? '<span class="fm-route-badge next">NEXT VISIT</span>' : '<span class="fm-route-badge planned">PLANNED</span>';
+        const badge = isActive ? '<span class="fm-route-badge ongoing">Sedang dikunjungi</span>' : isCompleted ? '<span class="fm-route-badge completed">Selesai</span>' : firstPending ? '<span class="fm-route-badge next">Kunjungan berikutnya</span>' : '<span class="fm-route-badge planned">Terjadwal</span>';
         let action = '';
         if (isActive) {
-          action = '<button class="btn btn-primary btn-block" data-act="fm-checkout" data-outlet="' + esc(item.outlet_id) + '">CHECK OUT OUTLET</button>' +
-            '<button class="btn btn-soft btn-block fm-secondary-action" data-act="fm-input" data-outlet="' + esc(item.outlet_id) + '">BUKA FORM KUNJUNGAN</button>';
+          action = '<div class="fm-route-actions"><button class="btn btn-primary" data-act="fm-input" data-outlet="' + esc(item.outlet_id) + '">Buka form kunjungan</button>' +
+            '<button class="btn btn-plain" data-act="fm-checkout" data-outlet="' + esc(item.outlet_id) + '">Check Out outlet</button></div>';
         } else if (isPlanned && !hasOtherOpen) {
-          action = '<button class="btn btn-yellow btn-block" data-act="fm-checkin" data-outlet="' + esc(item.outlet_id) + '">MULAI KUNJUNGAN · CHECK IN</button>';
+          action = '<div class="fm-route-actions"><button class="btn btn-primary" data-act="fm-checkin" data-outlet="' + esc(item.outlet_id) + '">Mulai kunjungan</button></div>';
         } else if (isPlanned && hasOtherOpen) {
-          action = '<button class="btn btn-soft btn-block" disabled>Selesaikan Check Out outlet aktif dahulu</button>';
+          action = '<p class="fm-route-notes">Tersedia setelah Check Out dari outlet aktif.</p>';
         } else {
           action = '<div class="fm-completed-note">Check In dan Check Out tercatat' + (item.checkout_at ? ' · ' + esc(fmtDateTime(item.checkout_at)) : '') + '</div>';
         }
@@ -1093,13 +1147,12 @@
     let activeNotice = '';
     if (active && !activeItem) {
       const activeOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(active.outlet_id));
-      activeNotice = '<div class="card fm-active-alert"><div><span class="eyebrow">CHECK IN MASIH AKTIF</span><strong>' + esc(activeOutlet ? activeOutlet.outlet_name : (active.outlet_id || 'Outlet sebelumnya')) + '</strong><p>Check Out harus diselesaikan pada outlet yang sama sebelum memulai rute berikutnya.</p></div><button class="btn btn-primary btn-block" data-act="fm-checkout" data-outlet="' + esc(active.outlet_id || '') + '">CHECK OUT SEKARANG</button></div>';
+      activeNotice = '<div class="card fm-active-alert"><div><span class="eyebrow">Check In masih aktif</span><strong>' + esc(activeOutlet ? activeOutlet.outlet_name : (active.outlet_id || 'Outlet sebelumnya')) + '</strong><p>Check Out harus diselesaikan pada outlet yang sama sebelum memulai rute berikutnya.</p></div><button class="btn btn-primary" data-act="fm-checkout" data-outlet="' + esc(active.outlet_id || '') + '">Check Out sekarang</button></div>';
     }
 
-    return pageHead('FIELD MERCHANDISER', 'Halo, ' + greeting + '.', dateLabel + ' · Siap menyelesaikan rute hari ini?') +
-      progressHtml + nooCardHtml +
-      '<section class="fm-route-section"><div class="fm-section-heading"><div><div class="eyebrow">RENCANA KUNJUNGAN</div><h2>Outlet hari ini</h2></div><span class="fm-route-count">' + fmtNum(total) + ' outlet ditugaskan</span></div>' +
-      activeNotice + routeContent + '</section>';
+    return pageHead('Halo, ' + greeting, dateLabel, nooAction) + '<div class="fm-layout"><div>' + progressHtml + activeNotice + '</div>' +
+      '<section class="card fm-route-section"><div class="card-head"><div><h2>Rencana kunjungan</h2><p>' + fmtNum(total) + ' outlet ditugaskan</p></div></div>' +
+      routeContent + '</section></div>';
   }
 
   function clientHomePage() {
@@ -1130,70 +1183,70 @@
       const outlet = outletName(row.outlet_id) || row.outlet_name || row.outlet_id || 'Outlet';
       const person = row.user_name || userName(row.user_id) || 'Tim lapangan';
       const status = row.status || 'Tercatat';
-      return '<div class="client-activity-row"><span class="client-activity-dot"></span><div class="client-activity-copy"><strong>' + esc(outlet) + '</strong><small>' + esc(person) + ' · ' + esc(fmtDateTime(when)) + '</small></div><span class="client-activity-status">' + esc(status) + '</span></div>';
-    }).join('') : '<div class="client-data-state compact"><strong>Belum ada aktivitas untuk ditampilkan</strong><p>Aktivitas kunjungan terbaru akan muncul di bagian ini setelah tersimpan.</p></div>';
+      return '<div class="client-activity-row"><div class="client-activity-copy"><strong>' + esc(outlet) + '</strong><small>' + esc(person) + ' · ' + esc(fmtDateTime(when)) + '</small></div><span class="client-activity-status">' + esc(status) + '</span></div>';
+    }).join('') : '<div class="client-data-state"><strong>Belum ada aktivitas untuk ditampilkan</strong><p>Aktivitas kunjungan terbaru akan muncul di bagian ini setelah tersimpan.</p></div>';
 
     const issuePanel = ready
-      ? '<div class="client-health-panel ' + (issueCount ? 'attention' : 'clear') + '"><span class="client-health-icon">' + (issueCount ? '!' : '✓') + '</span><div><strong>' + (issueCount ? fmtNum(issueCount) + ' issue terbuka' : 'Tidak ada issue terbuka') + '</strong><p>' + (issueCount ? 'Perlu ditinjau melalui laporan program.' : 'Tidak ada tindak lanjut terbuka yang tercatat saat ini.') + '</p></div></div>'
-      : '<div class="client-data-state compact"><strong>Status tindak lanjut belum tersedia</strong><p>Informasi issue akan tampil bersama data dashboard.</p></div>';
+      ? '<div class="notice ' + (issueCount ? 'warning' : 'success') + '"><strong>' +
+        (issueCount ? fmtNum(issueCount) + ' kendala terbuka' : 'Tidak ada kendala terbuka') + '</strong></div>'
+      : '<div class="empty-state compact">Status tindak lanjut belum tersedia.</div>';
 
-    return pageHead('CLIENT DASHBOARD', 'Ringkasan program', 'Satu tampilan untuk memahami pencapaian, aktivitas terbaru, dan hal yang perlu diperhatikan.', '<span class="client-updated-label">Pembaruan data <strong>' + esc(updated) + '</strong></span>') +
-      '<section class="client-overview-banner"><div><div class="eyebrow">TRW · FIELD EXECUTION</div><h2>Program overview</h2><p>Pantau hasil eksekusi berdasarkan data yang sudah tercatat di sistem.</p></div><div class="client-banner-side"><span class="client-live-dot"></span><span>' + (ready ? 'Data dashboard tersedia' : 'Menunggu data dashboard') + '</span></div></section>' +
-      mapCardHtml('dashboard-map-client') +
+    return pageHead('Ringkasan program', 'Capaian, lokasi, dan aktivitas tim lapangan.', '<span class="client-updated-label">Pembaruan data <strong>' + esc(updated) + '</strong></span>') +
       '<div class="client-dashboard-grid">' +
-      '<section class="card client-scorecard"><div class="client-panel-heading"><div><div class="eyebrow">PERFORMANCE SCORECARD</div><h2>Pencapaian terhadap target</h2><p class="muted small">Setiap indikator ditampilkan satu kali agar mudah dibaca dan tidak berulang.</p></div><span class="tag yellow">TARGET vs ACTUAL</span></div>' + scorecardHtml + '</section>' +
-      '<aside class="client-side-column"><section class="card client-health-card"><div class="eyebrow">PROGRAM HEALTH</div><h2>Perhatian program</h2><p class="muted small">Ringkasan kendala yang membutuhkan perhatian.</p>' + issuePanel + '<button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan program</button></section>' +
-      '<section class="card client-activity-card"><div class="client-panel-heading"><div><div class="eyebrow">FIELD EXECUTION</div><h2>Aktivitas terbaru</h2><p class="muted small">Lima kunjungan terbaru yang tersedia.</p></div></div>' + activityHtml + '<button class="client-text-link" data-act="nav" data-page="reports">Lihat seluruh aktivitas <span aria-hidden="true">→</span></button></section></aside>' +
-      '</div>' +
-      '<section class="client-detail-links"><div><div class="eyebrow">TELUSURI PROGRAM</div><h2>Butuh detail lebih lanjut?</h2><p>Buka data outlet atau laporan untuk meninjau detail eksekusi dan evidence.</p></div><div class="client-detail-actions"><button class="btn btn-plain" data-act="nav" data-page="outlets">Lihat outlet</button><button class="btn btn-yellow" data-act="nav" data-page="reports">Lihat laporan & evidence</button></div></section>';
+        '<section class="card client-scorecard"><h2>Pencapaian terhadap target</h2>' + scorecardHtml + '</section>' +
+        '<aside class="client-side-column"><section class="card client-health-card"><h2>Tindak lanjut</h2>' + issuePanel +
+        '<button class="btn btn-plain" data-act="nav" data-page="reports">Buka laporan program</button></section>' +
+        '<section class="card client-activity-card"><h2>Aktivitas terbaru</h2>' + activityHtml +
+        '<button class="link-btn" data-act="nav" data-page="reports">Lihat seluruh aktivitas</button></section></aside>' +
+      '</div>' + mapCardHtml('dashboard-map-client') +
+      '<div class="row client-detail-actions"><button class="btn btn-plain" data-act="nav" data-page="outlets">Lihat outlet</button><button class="btn btn-plain" data-act="nav" data-page="reports">Lihat laporan & evidence</button></div>';
   }
 
-
   function nooFormPage() {
-    if (state.user.role !== 'FM' && !['ADMIN', 'PM', 'TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
+    if (state.user.role !== 'FM' && !['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
     if (!state.openAttendance) {
-      return pageHead('NOO OUTLET', 'Check In Diperlukan', 'Lakukan Check In di lokasi outlet sebelum mendaftarkan outlet baru.') +
-        '<div class="card"><div class="notice warning">Wajib Check In dengan foto dan GPS sebelum input data outlet baru.</div><button class="btn btn-yellow btn-block" data-act="start-noo">Check In Sekarang</button></div>';
+      return pageHead('Check In Diperlukan', 'Lakukan Check In di lokasi outlet sebelum mendaftarkan outlet baru.') +
+        '<div class="card"><div class="notice warning">Wajib Check In dengan foto dan GPS sebelum input data outlet baru.</div><button class="btn btn-primary btn-block" data-act="start-noo">Check In Sekarang</button></div>';
     }
-    const cities = ['Jakarta Pusat', 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Selatan', 'Jakarta Timur', 'Bogor', 'Depok', 'Tangerang', 'Tangerang Selatan', 'Bekasi', 'Lainnya'];
-    const types = ['Toko sparepart', 'Distributor', 'Bengkel', 'Workshop', 'Toko sparepart dan bengkel', 'Lainnya'];
-    const segments = ['Grosir', 'Semi Grosir', 'Retail', 'Belum diklasifikasi'];
-    const priorities = ['P1', 'P2', 'P3'];
+    const cities = ['Jakarta Pusat','Jakarta Utara','Jakarta Barat','Jakarta Selatan','Jakarta Timur','Bogor','Depok','Tangerang','Tangerang Selatan','Bekasi','Lainnya'];
+    const types = ['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya'];
+    const segments = ['Grosir','Semi Grosir','Retail','Belum diklasifikasi'];
+    const priorities = ['P1','P2','P3'];
 
-    const content = field('noo_outlet_name', 'Nama Outlet / Toko', 'text', { required: true, placeholder: 'Contoh: Toko Maju Jaya Motor', full: true }) +
-      field('noo_city', 'Kota / Wilayah', 'select', { required: true, options: cities }) +
-      field('noo_area', 'Kecamatan / Area Cluster', 'text', { placeholder: 'Contoh: Sawah Besar' }) +
-      field('noo_address', 'Alamat Lengkap Toko', 'textarea', { required: true, full: true, placeholder: 'Jalan, nomor, patokan lokasi' }) +
-      field('noo_type', 'Tipe Outlet', 'select', { required: true, options: types }) +
-      field('noo_segment', 'Klasifikasi SOW Awal', 'select', { required: true, options: segments }) +
-      field('noo_priority', 'Prioritas Kunjungan', 'select', { options: priorities, value: 'P1' }) +
-      field('noo_contact', 'Nama Pemilik / PIC Toko', 'text', { required: true, placeholder: 'Nama pemilik atau kepala toko' }) +
-      field('noo_phone', 'Nomor Telepon PIC', 'tel', { required: true, placeholder: 'Nomor WhatsApp / HP' });
+    const content = field('noo_outlet_name','Nama Outlet / Toko','text',{required:true,placeholder:'Contoh: Toko Maju Jaya Motor',full:true}) +
+      field('noo_city','Kota / Wilayah','select',{required:true,options:cities}) +
+      field('noo_area','Kecamatan / Area Cluster','text',{placeholder:'Contoh: Sawah Besar'}) +
+      field('noo_address','Alamat Lengkap Toko','textarea',{required:true,full:true,placeholder:'Jalan, nomor, patokan lokasi'}) +
+      field('noo_type','Tipe Outlet','select',{required:true,options:types}) +
+      field('noo_segment','Klasifikasi SOW Awal','select',{required:true,options:segments}) +
+      field('noo_priority','Prioritas Kunjungan','select',{options:priorities,value:'P1'}) +
+      field('noo_contact','Nama Pemilik / PIC Toko','text',{required:true,placeholder:'Nama pemilik atau kepala toko'}) +
+      field('noo_phone','Nomor Telepon PIC','tel',{required:true,placeholder:'Nomor WhatsApp / HP'});
 
-    return pageHead('NOO LAPANGAN', 'Daftarkan Outlet Baru', 'Setelah tersimpan, sistem akan langsung membuka Form Kunjungan & Survey Outlet.') +
+    return pageHead('Daftarkan Outlet Baru', 'Setelah tersimpan, sistem akan langsung membuka Form Kunjungan & Survey Outlet.') +
       '<form data-form="nooOutlet" class="card">' +
-      '<div class="notice success" style="margin-bottom:14px;">' +
-      '<strong>Check In Aktif:</strong> Lokasi GPS & foto kehadiran Anda sudah tercatat. Silakan lengkapi profil outlet di bawah ini.' +
-      '</div>' +
-      '<div class="field-grid">' + content + '</div>' +
-      '<div class="form-actions" style="margin-top:20px;">' +
-      '<button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button>' +
-      '<button type="submit" class="btn btn-yellow">Simpan Outlet & Lanjut Survey ➔</button>' +
-      '</div>' +
+        '<div class="notice success">' +
+          '<strong>Check In Aktif:</strong> Lokasi GPS & foto kehadiran Anda sudah tercatat. Silakan lengkapi profil outlet di bawah ini.' +
+        '</div>' +
+        '<div class="field-grid">' + content + '</div>' +
+        '<div class="form-actions">' +
+          '<button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button>' +
+          '<button type="submit" class="btn btn-primary">Simpan outlet & lanjut survey</button>' +
+        '</div>' +
       '</form>';
   }
 
   function outletsPage() {
     const items = filteredOutlets();
-    const controls = '<div class="card"><div class="search-row"><input id="outlet-search" value="' + esc(state.outletQuery) + '" type="search" placeholder="Cari nama, area, atau alamat" aria-label="Cari outlet"><button class="btn btn-primary" data-act="search-outlets">Cari</button></div><div class="filter-row" style="margin-top:10px">' + [['all', 'Semua'], ['qualified', 'Qualified'], ['prospect', 'Prospect'], ['P1', 'Prioritas P1']].map(([id, label]) => '<button class="filter-chip ' + (state.outletFilter === id ? 'active' : '') + '" data-act="outlet-filter" data-filter="' + id + '">' + label + '</button>').join('') + '</div><div class="form-note">Daftar prospect tetap berstatus belum terverifikasi sampai ada hasil field survey.</div></div>';
+    const controls = '<div class="card outlet-controls"><form class="search-row" role="search"><input id="outlet-search" value="' + esc(state.outletQuery) + '" type="search" placeholder="Cari nama, area, atau alamat" aria-label="Cari outlet"><button class="btn btn-primary" type="submit" data-act="search-outlets">Cari</button></form><div class="filter-row" role="group" aria-label="Filter outlet">' + [['all','Semua'],['qualified','Qualified'],['prospect','Prospect'],['P1','Prioritas P1']].map(([id,label]) => filterButton('outlet-filter', id, label, state.outletFilter === id)).join('') + '</div><div class="form-note">Daftar prospect tetap berstatus belum terverifikasi sampai ada hasil field survey.</div></div>';
     let list = '';
     if (!items.length) list = '<div class="card empty-state"><strong>Outlet tidak ditemukan</strong>Coba kata kunci lain atau refresh data ketika online.</div>';
-    else list = '<div class="card"><div class="card-head"><div><h2>Daftar outlet</h2><p class="muted small">' + fmtNum(items.length) + ' hasil ditampilkan</p></div>' + (['ADMIN', 'PM', 'TL'].includes(state.user.role) ? '<button class="btn btn-small btn-yellow" data-act="nav" data-page="createOutlet">Tambah outlet</button>' : '') + '</div>' + items.map((o) => outletItem(o)).join('') + '</div>';
-    return pageHead('COVERAGE', 'Outlet & prospect', 'Cari outlet sasaran, lihat status, lalu mulai aktivitas lapangan.') + controls + list;
+    else list = '<div class="card"><div class="card-head"><div><h2>Daftar outlet</h2><p class="muted small">' + fmtNum(items.length) + ' hasil ditampilkan</p></div>' + (['ADMIN','PM','TL'].includes(state.user.role) ? '<button class="btn btn-small btn-primary" data-act="nav" data-page="createOutlet">Tambah outlet</button>' : '') + '</div>' + items.map((o) => outletItem(o)).join('') + '</div>';
+    return pageHead('Outlet & prospect', 'Daftar outlet sasaran dan status kualifikasi.') + controls + list;
   }
   function filteredOutlets() {
     let list = state.outletList.slice(); const q = state.outletQuery.toLowerCase().trim();
-    if (q) list = list.filter((o) => [o.outlet_name, o.city, o.area, o.address, o.segment_final, o.segment_indicative, o.priority].join(' ').toLowerCase().includes(q));
+    if (q) list = list.filter((o) => [o.outlet_name,o.city,o.area,o.address,o.segment_final,o.segment_indicative,o.priority].join(' ').toLowerCase().includes(q));
     if (state.outletFilter === 'qualified') list = list.filter((o) => o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED');
     if (state.outletFilter === 'prospect') list = list.filter((o) => o.is_prospect || String(o.status).toUpperCase().includes('UNVERIFIED') || String(o.status).toUpperCase().includes('BELUM'));
     if (state.outletFilter === 'P1') list = list.filter((o) => String(o.priority).toUpperCase() === 'P1');
@@ -1208,12 +1261,12 @@
     const fmCanSelect = isFM && state.openAttendance && String(state.openAttendance.outlet_id || '') === String(o.outlet_id);
     const actions = state.user.role === 'CLIENT' ? '<span class="tag gray">View only</span>' : isFM ? (fmCanSelect ? '<button class="btn btn-small btn-primary" data-act="choose-outlet" data-id="' + esc(o.outlet_id) + '">Buka input</button>' : '<span class="tag gray">Lihat Rencana Kunjungan</span>') : '<button class="btn btn-small btn-primary" data-act="choose-outlet" data-id="' + esc(o.outlet_id) + '">Pilih outlet</button>';
     const mapAction = o.maps_link ? '<a class="maps-link" href="' + esc(o.maps_link) + '" target="_blank" rel="noopener">Buka Maps</a>' : '';
-    return '<div class="outlet-item"><div class="outlet-info"><strong>' + esc(o.outlet_name) + '</strong><p>' + esc(o.city || 'Area belum diisi') + (o.area ? ' · ' + esc(o.area) : '') + '</p><p>' + esc(segment) + ' · ' + esc(o.priority || 'Tanpa prioritas') + '</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' + status + (o.is_prospect ? '<span class="tag gray">BELUM VERIFIKASI FISIK</span>' : '') + '</div>' + (o.address ? '<p style="margin-top:7px">' + esc(o.address) + '</p>' : '') + '</div><div class="outlet-actions">' + actions + mapAction + '</div></div>';
+    return '<div class="outlet-item"><div class="outlet-info"><strong>' + esc(o.outlet_name) + '</strong><p>' + esc(o.city || 'Area belum diisi') + (o.area ? ' · ' + esc(o.area) : '') + '</p><p>' + esc(segment) + ' · ' + esc(o.priority || 'Tanpa prioritas') + '</p><div class="outlet-tags">' + status + (o.is_prospect ? '<span class="tag gray">BELUM VERIFIKASI FISIK</span>' : '') + '</div>' + (o.address ? '<p class="outlet-address">' + esc(o.address) + '</p>' : '') + '</div><div class="outlet-actions">' + actions + mapAction + '</div></div>';
   }
 
   function inputPage() {
-    if (state.user.role === 'CLIENT') return pageHead('AKSES CLIENT', 'Mode hanya-baca', 'Akun client tidak dapat mengirim atau mengubah data operasional.') + '<div class="card"><div class="notice">Gunakan Dashboard, Outlet, dan Laporan untuk memantau program.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan</button></div>';
-    if (state.user.role === 'FM' && (!state.openAttendance || !state.openAttendance.outlet_id)) return pageHead('KUNJUNGAN OUTLET', 'Check In diperlukan', 'Pilih outlet dari Rencana Kunjungan hari ini, lalu lakukan Check In dengan foto dan GPS.') + '<div class="card"><div class="notice warning">Input kunjungan hanya terbuka setelah Check In pada outlet yang ditugaskan TL/Admin.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="home">Kembali ke Rencana Kunjungan</button></div>';
+    if (state.user.role === 'CLIENT') return pageHead('Mode hanya-baca','Akun client tidak dapat mengirim atau mengubah data operasional.') + '<div class="card"><div class="notice">Gunakan Dashboard, Outlet, dan Laporan untuk memantau program.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="reports">Buka laporan</button></div>';
+    if (state.user.role === 'FM' && (!state.openAttendance || !state.openAttendance.outlet_id)) return pageHead('Check In diperlukan','Pilih outlet dari Rencana Kunjungan hari ini, lalu lakukan Check In dengan foto dan GPS.') + '<div class="card"><div class="notice warning">Input kunjungan hanya terbuka setelah Check In pada outlet yang ditugaskan TL/Admin.</div><button class="btn btn-primary btn-block" data-act="nav" data-page="home">Kembali ke Rencana Kunjungan</button></div>';
     if (state.user.role === 'FM' && state.openAttendance && (!state.selectedOutlet || String(state.selectedOutlet.outlet_id) !== String(state.openAttendance.outlet_id))) { state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(state.openAttendance.outlet_id)) || state.selectedOutlet; }
     if (state.inputType === 'visit') return visitFormPage();
     if (state.inputType === 'activation') return activationFormPage();
@@ -1221,31 +1274,31 @@
     if (state.inputType === 'issue') return issueFormPage();
     const isSpg = state.user.role === 'SPG';
     const tiles = isSpg ? [
-      ['activation', 'SPG Activation', 'Aktivasi produk dan edukasi di outlet qualified.'],
-      ['interaction', 'End-user interaction', 'Jumlah interaksi, purchase intent dan lead.'],
-      ['issue', 'Catat kendala', 'Kirim issue untuk ditindaklanjuti.']
+      ['activation','SPG Activation','Aktivasi produk dan edukasi di outlet qualified.'],
+      ['interaction','End-user interaction','Jumlah interaksi, purchase intent dan lead.'],
+      ['issue','Catat kendala','Kirim issue untuk ditindaklanjuti.']
     ] : [
-      ['visit', 'FM Visit + Qualification', 'Kunjungan, klasifikasi outlet, POSM, edukasi dan TRW survey dalam satu alur.'],
-      ['issue', 'Catat kendala', 'Issue lapangan, tindakan, PIC dan deadline.']
+      ['visit','FM Visit + Qualification','Kunjungan, klasifikasi outlet, POSM, edukasi dan TRW survey dalam satu alur.'],
+      ['issue','Catat kendala','Issue lapangan, tindakan, PIC dan deadline.']
     ];
-    return pageHead('INPUT LAPANGAN', 'Pilih jenis laporan', 'Form dibuat berurutan agar tidak perlu mengisi data yang sama berulang kali.') + '<div class="card"><div class="notice ' + (state.openAttendance ? 'success' : 'warning') + '">' + (state.openAttendance ? '<strong>Check In aktif.</strong> Anda dapat melanjutkan laporan lapangan.' : '<strong>Anda belum Check In.</strong> Check In dengan foto dan GPS harus dilakukan sebelum menyimpan laporan.') + '</div><div class="action-grid">' + tiles.map(([key, title, desc]) => '<button class="action-tile" data-act="select-form" data-form-type="' + key + '"><strong>' + esc(title) + '</strong><small>' + esc(desc) + '</small></button>').join('') + '</div></div>' + (state.selectedOutlet ? '<div class="card"><div class="eyebrow">Outlet terpilih</div><h3>' + esc(state.selectedOutlet.outlet_name) + '</h3><p class="muted small">' + esc(state.selectedOutlet.city || '') + ' · ' + esc(state.selectedOutlet.outlet_id) + '</p><button class="btn btn-small btn-plain" data-act="clear-outlet">Ganti outlet</button></div>' : '<div class="card"><h3>Belum memilih outlet</h3><p class="muted small">Pilih outlet melalui menu Outlet sebelum membuka laporan kunjungan/aktivasi.</p><button class="btn btn-primary" data-act="nav" data-page="outlets">Cari outlet</button></div>');
+    return pageHead('Pilih jenis laporan','Form dibuat berurutan agar tidak perlu mengisi data yang sama berulang kali.') + '<div class="card"><div class="notice ' + (state.openAttendance ? 'success' : 'warning') + '">' + (state.openAttendance ? '<strong>Check In aktif.</strong> Anda dapat melanjutkan laporan lapangan.' : '<strong>Anda belum Check In.</strong> Check In dengan foto dan GPS harus dilakukan sebelum menyimpan laporan.') + '</div><div class="action-grid">' + tiles.map(([key,title,desc]) => '<button class="action-tile" data-act="select-form" data-form-type="' + key + '"><strong>' + esc(title) + '</strong><small>' + esc(desc) + '</small></button>').join('') + '</div></div>' + (state.selectedOutlet ? '<div class="card"><div class="eyebrow">Outlet terpilih</div><h3>' + esc(state.selectedOutlet.outlet_name) + '</h3><p class="muted small">' + esc(state.selectedOutlet.city || '') + ' · ' + esc(state.selectedOutlet.outlet_id) + '</p><button class="btn btn-small btn-plain" data-act="clear-outlet">Ganti outlet</button></div>' : '<div class="card"><h3>Belum memilih outlet</h3><p class="muted small">Pilih outlet melalui menu Outlet sebelum membuka laporan kunjungan/aktivasi.</p><button class="btn btn-primary" data-act="nav" data-page="outlets">Cari outlet</button></div>');
   }
   function selectedOutletBlock() {
     if (!state.selectedOutlet) return '<div class="notice warning">Pilih outlet terlebih dahulu. <button type="button" class="link-btn" data-act="nav" data-page="outlets">Buka daftar outlet</button></div>';
-    return '<div class="notice success"><strong>' + esc(state.selectedOutlet.outlet_name) + '</strong><br><span class="small">' + esc(state.selectedOutlet.city || '') + ' · ' + esc(state.selectedOutlet.outlet_id) + '</span><br><button type="button" class="link-btn" data-act="clear-outlet">Ganti outlet</button></div>';
+    return '<div class="notice selected-outlet"><strong>' + esc(state.selectedOutlet.outlet_name) + '</strong><br><span class="small">' + esc(state.selectedOutlet.city || '') + ' · ' + esc(state.selectedOutlet.outlet_id) + '</span><br><button type="button" class="link-btn" data-act="clear-outlet">Ganti outlet</button></div>';
   }
-  function visitFormPage() {
-    if (!state.selectedOutlet) return pageHead('LAPORAN FM', 'Kunjungan outlet', 'Pilih outlet terlebih dahulu.') + selectedOutletBlock();
-    if (state.user.role === 'SPG') return pageHead('AKSES', 'Form FM Visit', 'Modul ini hanya untuk FM, TL, PM, atau Admin.') + '<div class="card">Silakan pilih modul SPG Activation atau Interaction.</div>';
-
+    function visitFormPage() {
+    if (!state.selectedOutlet) return pageHead('Kunjungan outlet','Pilih outlet terlebih dahulu.') + selectedOutletBlock();
+    if (state.user.role === 'SPG') return pageHead('Form FM Visit','Modul ini hanya untuk FM, TL, PM, atau Admin.') + '<div class="card">Silakan pilih modul SPG Activation atau Interaction.</div>';
+    
     // Section 1: Data Kunjungan (1.1 s/d 1.7)
-    const visitSection = field('visit_type', '1.1 Tipe Kunjungan', 'select', { required: true, blank: 'Pilih tipe kunjungan', options: ['Existing', 'New Prospect'] }) +
-      photoField('outlet', '1.2 Foto Tampak Depan Toko', 'Wajib untuk bukti fisik dan seleksi toko.', true) +
-      photoField('outlet_inside', '1.3 Foto Tampak Dalam Toko', 'Wajib untuk melihat display dan stok toko.', true) +
-      field('visit_contact', '1.4 Nama Pemilik / PIC Toko', 'text', { required: true, placeholder: 'Nama pemilik atau kepala toko' }) +
-      field('visit_phone', '1.5 Nomor Telepon PIC', 'tel', { required: true, placeholder: 'Nomor telepon / WhatsApp PIC' }) +
-      field('b2b_sales', '1.6 Estimasi Turnover / B2B Sales', 'text', { placeholder: 'Nominal omset / estimasi penjualan toko' }) +
-      field('visit_notes', '1.7 Catatan Kunjungan', 'textarea', { full: true, placeholder: 'Kondisi outlet, kebutuhan, follow-up…' });
+    const visitSection = field('visit_type','1.1 Tipe Kunjungan','select',{required:true,blank:'Pilih tipe kunjungan',options:['Existing','New Prospect']}) +
+      photoField('outlet','1.2 Foto Tampak Depan Toko','Wajib untuk bukti fisik dan seleksi toko.',true) +
+      photoField('outlet_inside','1.3 Foto Tampak Dalam Toko','Wajib untuk melihat display dan stok toko.',true) +
+      field('visit_contact','1.4 Nama Pemilik / PIC Toko','text',{required:true,placeholder:'Nama pemilik atau kepala toko'}) +
+      field('visit_phone','1.5 Nomor Telepon PIC','tel',{required:true,placeholder:'Nomor telepon / WhatsApp PIC'}) +
+      field('b2b_sales','1.6 Estimasi Turnover / B2B Sales','text',{placeholder:'Nominal omset / estimasi penjualan toko'}) +
+      field('visit_notes','1.7 Catatan Kunjungan','textarea',{full:true,placeholder:'Kondisi outlet, kebutuhan, follow-up…'});
 
     // Section 2: Kualifikasi Outlet (2.1 s/d 2.17)
     const skuRangeOptions = ['Braking Component', 'Linkage', 'Suspension', 'Tidak Pernah Menjual'];
@@ -1273,34 +1326,35 @@
       { brand: 'SANIKO', key: 'vol_SANIKO' },
       { brand: 'MONRO', key: 'vol_MONRO' }
     ];
-    const stockVolumeFieldsHtml = '<div id="wrap-brand-monthly-volume" class="conditional-block" style="display:none;">' +
+    const stockVolumeFieldsHtml = '<div id="wrap-brand-monthly-volume" class="conditional-block field-full" style="display:none;">' +
       '<div class="conditional-label">2.4 Estimasi Pengambilan per Bulan (Wajib Diisi)</div>' +
-      '<p class="form-note" style="margin-bottom:10px;">Kira-kira dalam sebulan biasanya ambil/kulakan berapa banyak untuk masing-masing merek tersebut? (Contoh pengisian: TRW 50 set/bln, Akebono 40 set/bln, Bendix 20 set/bln)</p>' +
+      '<p class="form-note">Kira-kira dalam sebulan biasanya ambil/kulakan berapa banyak untuk masing-masing merek tersebut? (Contoh pengisian: TRW 50 set/bln, Akebono 40 set/bln, Bendix 20 set/bln)</p>' +
       stockVolumeBrands.map((item) =>
-        '<div id="wrap-' + esc(item.key) + '" class="field field-full" style="display:none;margin-bottom:10px;">' +
-        '<label>Estimasi Pengambilan per Bulan ' + esc(item.brand) + ' <span aria-hidden="true">*</span></label>' +
-        '<input name="' + esc(item.key) + '" type="text" placeholder="Contoh: ' + esc(item.brand) + ' 50 set/bln">' +
+        '<div id="wrap-' + esc(item.key) + '" class="field-full" style="display:none;">' +
+          field(item.key, 'Estimasi Pengambilan per Bulan ' + item.brand, 'text', {
+            required: true, placeholder: 'Contoh: ' + item.brand + ' 50 set/bln'
+          }) +
         '</div>'
       ).join('') +
-      '</div>';
+    '</div>';
 
-    const qualSection = field('outlet_type', '2.1 Tipe Outlet', 'select', { required: true, blank: 'Pilih tipe outlet', options: ['Toko sparepart', 'Distributor', 'Bengkel', 'Workshop', 'Toko sparepart dan bengkel', 'Lainnya'] }) +
-      field('active_bays', '2.2 Jumlah Active Bay (Khusus bengkel / workshop)', 'number', { min: 0, placeholder: 'Minimal 3 bila dikualifikasikan sebagai bengkel/workshop' }) +
+    const qualSection = field('outlet_type','2.1 Tipe Outlet','select',{required:true,blank:'Pilih tipe outlet',options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) +
+      field('active_bays','2.2 Jumlah Active Bay (Khusus bengkel / workshop)','number',{min:0,placeholder:'Minimal 3 bila dikualifikasikan sebagai bengkel/workshop'}) +
       stockedBrandsDropdown +
       stockVolumeFieldsHtml +
-      field('segment_final', '2.5 Klasifikasi Final SOW', 'select', { required: true, blank: 'Pilih klasifikasi setelah verifikasi', options: ['Grosir', 'Semi Grosir', 'Retail', 'Belum diklasifikasi'] }) +
-      field('brand_count', '2.6 Jumlah Brand yang Dijual', 'number', { min: 0, placeholder: 'Contoh: 25' }) +
-      field('fastest_moving_brand', '2.7 Paling Fast Moving Merek Apa?', 'text', { placeholder: 'Nama merek paling laris di outlet ini' }) +
-      field('fastest_moving_pct', '2.8 Berapa % Cakupan Brand Fast Moving?', 'text', { placeholder: 'Contoh: 60% atau 75%' }) +
-      field('purchase_history_signal', '2.9 Riwayat Pembelian Brake / Steering 6 Bulan Terakhir?', 'select', { required: true, blank: 'Pilih status riwayat pembelian', options: [{ value: 'Ya', label: 'Ya, ada riwayat' }, { value: 'Tidak', label: 'Tidak ada' }, { value: 'Belum diketahui', label: 'Belum diketahui' }] }) +
-      '<div id="wrap-brake-cat" class="conditional-block">' + field('brake_categories', '2.10 Kategori Produk yang Dibeli? (Jika ada riwayat)', 'select', { options: ['Semua (Hydraulic, Friction, Shock Absorber)', 'Hydraulic & Friction', 'Hydraulic saja', 'Friction saja', 'Shock Absorber & Linkage', 'Belum diketahui'] }) + '</div>' +
-      field('trw_shelf_presence', '2.11 Sudah Mengenal TRW?', 'select', { required: true, blank: 'Pilih status pengenalan TRW', options: ['Pernah menggunakan', 'Pernah tau', 'Belum pernah'] }) +
-      field('trw_in_stock', '2.12 TRW Tersedia di Rak / Stok Toko?', 'select', { required: true, blank: 'Pilih ketersediaan', options: ['Ya', 'Tidak'] }) +
-      field('owner_engagement', '2.13 Owner / Kepala Mekanik Bersedia Ikut Edukasi?', 'select', { required: true, blank: 'Pilih kesediaan', options: ['Ya', 'Tidak', 'Perlu follow-up'] }) +
+      field('segment_final','2.5 Klasifikasi Final SOW','select',{required:true,blank:'Pilih klasifikasi setelah verifikasi',options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) +
+      field('brand_count','2.6 Jumlah Brand yang Dijual','number',{min:0,placeholder:'Contoh: 25'}) +
+      field('fastest_moving_brand','2.7 Paling Fast Moving Merek Apa?','text',{placeholder:'Nama merek paling laris di outlet ini'}) +
+      field('fastest_moving_pct','2.8 Berapa % Cakupan Brand Fast Moving?','text',{placeholder:'Contoh: 60% atau 75%'}) +
+      field('purchase_history_signal','2.9 Riwayat Pembelian Brake / Steering 6 Bulan Terakhir?','select',{required:true,blank:'Pilih status riwayat pembelian',options:[{value:'Ya',label:'Ya, ada riwayat'},{value:'Tidak',label:'Tidak ada'},{value:'Belum diketahui',label:'Belum diketahui'}]}) +
+      '<div id="wrap-brake-cat" class="conditional-block field-full">' + field('brake_categories','2.10 Kategori Produk yang Dibeli? (Jika ada riwayat)','select',{options:['Semua (Hydraulic, Friction, Shock Absorber)','Hydraulic & Friction','Hydraulic saja','Friction saja','Shock Absorber & Linkage','Belum diketahui']}) + '</div>' +
+      field('trw_shelf_presence','2.11 Sudah Mengenal TRW?','select',{required:true,blank:'Pilih status pengenalan TRW',options:['Pernah menggunakan','Pernah tau','Belum pernah']}) +
+      field('trw_in_stock','2.12 TRW Tersedia di Rak / Stok Toko?','select',{required:true,blank:'Pilih ketersediaan',options:['Ya','Tidak']}) +
+      field('owner_engagement','2.13 Owner / Kepala Mekanik Bersedia Ikut Edukasi?','select',{required:true,blank:'Pilih kesediaan',options:['Ya','Tidak','Perlu follow-up']}) +
       skuRangeDropdown +
-      field('purchase_frequency', '2.15 Frekuensi Restock Toko', 'select', { required: true, blank: 'Pilih frekuensi', options: ['Mingguan', '2 Mingguan', 'Bulanan', 'Tidak rutin', 'Belum diketahui'] }) +
-      field('eligible', '2.16 Sales Follow Up / Hasil Kualifikasi', 'select', { required: true, blank: 'Pilih hasil kualifikasi', options: [{ value: 'Ya', label: 'Lolos Qualified otomatis / Ya — Qualified' }, { value: 'Tidak', label: 'Tidak Qualified' }] }) +
-      field('qualification_reason', '2.17 Alasan Kualifikasi / Catatan Follow-up', 'textarea', { full: true, placeholder: 'Wajib diisi bila tidak qualified, atau catatan kebutuhan bila qualified.' });
+      field('purchase_frequency','2.15 Frekuensi Restock Toko','select',{required:true,blank:'Pilih frekuensi',options:['Mingguan','2 Mingguan','Bulanan','Tidak rutin','Belum diketahui']}) +
+      field('eligible','2.16 Sales Follow Up / Hasil Kualifikasi','select',{required:true,blank:'Pilih hasil kualifikasi',options:[{value:'Ya',label:'Lolos Qualified otomatis / Ya — Qualified'},{value:'Tidak',label:'Tidak Qualified'}]}) +
+      field('qualification_reason','2.17 Alasan Kualifikasi / Catatan Follow-up','textarea',{full:true,placeholder:'Wajib diisi bila tidak qualified, atau catatan kebutuhan bila qualified.'});
 
     // Section 3: Audit & POSM (3.1 s/d 3.8)
     const posmOptions = ['Tidak ada', 'Spanduk', 'Poster', 'Banner', 'Sticker', 'Lainnya'];
@@ -1312,21 +1366,21 @@
     });
 
     const posmSection = posmTypeDropdown +
-      '<div id="wrap-posm-allowed" class="conditional-block">' + field('posm_allowed', '3.2 Diperbolehkan Pasang POSM Baru? (Jika tidak ada POSM)', 'select', { options: ['Ya', 'Tidak'] }) + '</div>' +
-      '<div id="wrap-posm-location" class="conditional-block">' + field('posm_location_type', '3.3 Titik / Lokasi POSM', 'select', { options: ['Jalan Utama', 'Jalan Alternative', 'Lainnya / Dalam Toko'] }) + '</div>' +
-      '<div id="wrap-posm-before" class="conditional-block">' + field('condition_before', '3.4 Kondisi POSM Sebelum', 'select', { options: ['Baik', 'Rusak', 'Kotor', 'Tidak terlihat', 'Tidak sesuai standar', 'Lainnya'] }) + '</div>' +
-      field('posm_action', '3.5 Tindakan POSM', 'select', { required: true, options: ['Tidak ada perubahan', 'Pasang baru', 'Replace (Ganti)', 'Repair (Perbaiki)'] }) +
-      field('condition_after', '3.6 Kondisi POSM Setelah Tindakan', 'select', { options: ['Baik dan terlihat', 'Terpasang baru', 'Perlu follow-up', 'Tidak ada perubahan'] }) +
-      photoField('posm_before', '3.7a Foto POSM Before', 'Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
-      photoField('posm_after', '3.7b Foto POSM After', 'Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
-      field('owner_approval', '3.8 Persetujuan Owner untuk POSM', 'select', { options: ['Ya', 'Tidak', 'Tidak diperlukan'] }) +
-      field('posm_notes', 'Catatan POSM', 'textarea', { full: true, placeholder: 'Ukuran spanduk, posisi gantung, dll.' });
+      '<div id="wrap-posm-allowed" class="conditional-block field-full">' + field('posm_allowed','3.2 Diperbolehkan Pasang POSM Baru? (Jika tidak ada POSM)','select',{options:['Ya','Tidak']}) + '</div>' +
+      '<div id="wrap-posm-location" class="conditional-block field-full">' + field('posm_location_type','3.3 Titik / Lokasi POSM','select',{options:['Jalan Utama','Jalan Alternative','Lainnya / Dalam Toko']}) + '</div>' +
+      '<div id="wrap-posm-before" class="conditional-block field-full">' + field('condition_before','3.4 Kondisi POSM Sebelum','select',{options:['Baik','Rusak','Kotor','Tidak terlihat','Tidak sesuai standar','Lainnya']}) + '</div>' +
+      field('posm_action','3.5 Tindakan POSM','select',{required:true,options:['Tidak ada perubahan','Pasang baru','Replace (Ganti)','Repair (Perbaiki)']}) +
+      field('condition_after','3.6 Kondisi POSM Setelah Tindakan','select',{options:['Baik dan terlihat','Terpasang baru','Perlu follow-up','Tidak ada perubahan']}) +
+      photoField('posm_before','3.7a Foto POSM Before','Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
+      photoField('posm_after','3.7b Foto POSM After','Wajib bila tindakan Pasang Baru, Replace, atau Repair.') +
+      field('owner_approval','3.8 Persetujuan Owner untuk POSM','select',{options:['Ya','Tidak','Tidak diperlukan']}) +
+      field('posm_notes','Catatan POSM','textarea',{full:true,placeholder:'Ukuran spanduk, posisi gantung, dll.'});
 
     // Section 4: Edukasi Produk (4.1 s/d 4.3)
-    const eduSection = field('education_done', '4.1 Edukasi Produk Diberikan?', 'select', { required: true, blank: 'Pilih status edukasi', options: [{ value: 'Ya', label: 'Ya' }, { value: 'Tidak', label: 'Tidak' }] }) +
-      '<div id="wrap-edu-details" class="conditional-block">' +
-      field('education_type', '4.2 Materi Edukasi yang Diberikan', 'select', { options: ['Product Knowledge', 'Program Promo', 'Product Knowledge + Promo', 'Demo Komponen Rem / Steering', 'Tidak dilakukan'] }) +
-      field('product_knowledge', '4.3 Poin Edukasi / Catatan Penjelasan', 'textarea', { full: true, placeholder: 'Catatan materi yang disampaikan sesuai script TRW' }) +
+    const eduSection = field('education_done','4.1 Edukasi Produk Diberikan?','select',{required:true,blank:'Pilih status edukasi',options:[{value:'Ya',label:'Ya'},{value:'Tidak',label:'Tidak'}]}) +
+      '<div id="wrap-edu-details" class="conditional-block field-full">' +
+        field('education_type','4.2 Materi Edukasi yang Diberikan','select',{options:['Product Knowledge','Program Promo','Product Knowledge + Promo','Demo Komponen Rem / Steering','Tidak dilakukan']}) +
+        field('product_knowledge','4.3 Poin Edukasi / Catatan Penjelasan','textarea',{full:true,placeholder:'Catatan materi yang disampaikan sesuai script TRW'}) +
       '</div>';
 
     // Section 5: Survey TRW & Market Insight (5.1 s/d 5.13)
@@ -1342,83 +1396,88 @@
       full: true,
       placeholder: 'Pilih merek kompetitor yang digunakan/dijual toko...',
       hint: 'Centang semua merek kompetitor yang ditemukan dari kategori Hydraulic, Friction, Shock Absorber, dan Linkage.'
-    }) + field('current_brand', 'Brand Kompetitor Lainnya (Teks Bebas)', 'text', { placeholder: 'Ketik merek kompetitor lain jika ada (opsional)' });
+    }) + field('current_brand','Brand Kompetitor Lainnya (Teks Bebas)','text',{placeholder:'Ketik merek kompetitor lain jika ada (opsional)'});
 
     const surveySection = categorizedCompetitorHtml +
-      field('current_volume', '5.2 Volume Stok / Penjualan Saat Ini', 'text', { placeholder: 'Estimasi unit / set per bulan' }) +
-      field('trw_stock', '5.3 Stok TRW Tersedia di Toko?', 'select', { required: true, blank: 'Pilih status ketersediaan', options: ['Ya', 'Tidak', 'Belum diketahui'] }) +
-      field('trw_price', '5.4 Harga Jual TRW (Rp)', 'number', { min: 0, placeholder: 'Contoh: 250000' }) +
-      field('trw_campaign_program', '5.5 Campaign / Program TRW', 'textarea', { full: true, placeholder: 'Cek program promo, program tour, cashback, atau bundling TRW' }) +
-      field('trw_purchase_source', '5.6 Pembelian Produk TRW Melalui', 'select', { options: ['Sales TRW', 'Grossir', 'Distributor Resmi', 'Lainnya'] }) +
-      field('competitor_brand', '5.7 Brand Pembanding Utama', 'text', { required: true, placeholder: 'Contoh: Akebono / Bendix / KYB' }) +
-      field('competitor_price', '5.8 Harga Kompetitor Tersebut (Rp)', 'number', { min: 0, placeholder: 'Contoh: 230000' }) +
-      field('competitor_net_program', '5.9 Harga Netto & Program Kompetitor', 'textarea', { full: true, placeholder: 'Cek harga modal bersih netto setelah diskon, program hadiah/tour/cashback dari kompetitor.' }) +
-      field('purchase_intent', '5.10 Minat Beli TRW? (Skala 1 s/d 5)', 'select', { required: true, blank: 'Pilih skala minat', options: [{ value: '1', label: '1 — Sangat Rendah' }, { value: '2', label: '2 — Rendah' }, { value: '3', label: '3 — Sedang' }, { value: '4', label: '4 — Tinggi' }, { value: '5', label: '5 — Sangat Tinggi' }] }) +
-      '<div id="wrap-barrier-switching" class="conditional-block">' + field('barrier_switching', '5.11 Alasan Belum Berminat / Hambatan Berpindah', 'select', { options: ['Harga', 'Stok tidak lancar', 'Brand preference', 'Kualitas / performa', 'Belum ada kebutuhan', 'Lainnya'] }) + '</div>' +
-      field('brand_awareness', '5.12a Awareness TRW', 'select', { options: ['Tinggi', 'Sedang', 'Rendah', 'Belum tahu TRW'] }) +
-      field('quality_perception', '5.12b Persepsi Kualitas TRW', 'select', { options: ['Baik', 'Netral', 'Kurang', 'Belum pernah menggunakan'] }) +
-      field('price_perception', '5.12c Persepsi Harga TRW', 'select', { options: ['Kompetitif', 'Sesuai pasar', 'Terlalu tinggi', 'Belum diketahui'] }) +
-      field('unmet_demand', '5.13 Unmet Demand & Market Insight', 'textarea', { full: true, placeholder: 'Kebutuhan SKU / ketersediaan barang / masukan toko yang belum terpenuhi…' });
+      field('current_volume','5.2 Volume Stok / Penjualan Saat Ini','text',{placeholder:'Estimasi unit / set per bulan'}) +
+      field('trw_stock','5.3 Stok TRW Tersedia di Toko?','select',{required:true,blank:'Pilih status ketersediaan',options:['Ya','Tidak','Belum diketahui']}) +
+      field('trw_price','5.4 Harga Jual TRW (Rp)','number',{min:0,placeholder:'Contoh: 250000'}) +
+      field('trw_campaign_program','5.5 Campaign / Program TRW','textarea',{full:true,placeholder:'Cek program promo, program tour, cashback, atau bundling TRW'}) +
+      field('trw_purchase_source','5.6 Pembelian Produk TRW Melalui','select',{options:['Sales TRW','Grossir','Distributor Resmi','Lainnya']}) +
+      field('competitor_brand','5.7 Brand Pembanding Utama','text',{required:true,placeholder:'Contoh: Akebono / Bendix / KYB'}) +
+      field('competitor_price','5.8 Harga Kompetitor Tersebut (Rp)','number',{min:0,placeholder:'Contoh: 230000'}) +
+      field('competitor_net_program','5.9 Harga Netto & Program Kompetitor','textarea',{full:true,placeholder:'Cek harga modal bersih netto setelah diskon, program hadiah/tour/cashback dari kompetitor.'}) +
+      field('purchase_intent','5.10 Minat Beli TRW? (Skala 1 s/d 5)','select',{required:true,blank:'Pilih skala minat',options:[{value:'1',label:'1 — Sangat Rendah'},{value:'2',label:'2 — Rendah'},{value:'3',label:'3 — Sedang'},{value:'4',label:'4 — Tinggi'},{value:'5',label:'5 — Sangat Tinggi'}]}) +
+      '<div id="wrap-barrier-switching" class="conditional-block field-full">' + field('barrier_switching','5.11 Alasan Belum Berminat / Hambatan Berpindah','select',{options:['Harga','Stok tidak lancar','Brand preference','Kualitas / performa','Belum ada kebutuhan','Lainnya']}) + '</div>' +
+      field('brand_awareness','5.12a Awareness TRW','select',{options:['Tinggi','Sedang','Rendah','Belum tahu TRW']}) +
+      field('quality_perception','5.12b Persepsi Kualitas TRW','select',{options:['Baik','Netral','Kurang','Belum pernah menggunakan']}) +
+      field('price_perception','5.12c Persepsi Harga TRW','select',{options:['Kompetitif','Sesuai pasar','Terlalu tinggi','Belum diketahui']}) +
+      field('unmet_demand','5.13 Unmet Demand & Market Insight','textarea',{full:true,placeholder:'Kebutuhan SKU / ketersediaan barang / masukan toko yang belum terpenuhi…'});
 
-    return pageHead('SURVEY OUTLET FM', 'Kunjungan & Kualifikasi Toko', 'Sesuai standar kuesioner resmi TRW (5 Bagian).') +
+    return pageHead('Kunjungan & Kualifikasi Toko','Sesuai standar kuesioner resmi TRW (5 Bagian).') +
       selectedOutletBlock() +
       (state.openAttendance ? '' : '<div class="notice warning">Wajib Check In dengan foto + GPS sebelum menyimpan kuesioner.</div>') +
       '<form data-form="visit" class="card">' +
-      '<div class="eyebrow">Outlet Target: ' + esc(state.selectedOutlet.outlet_name) + ' (' + esc(state.selectedOutlet.outlet_id) + ')</div>' +
-      section('1', 'Data Kunjungan', visitSection, 'Foto tampak depan & tampak dalam toko menjadi evidence utama.') +
-      section('2', 'Kualifikasi Outlet', qualSection, 'Pastikan verifikasi stok aktif, SOW final, dan brand fast moving.') +
-      section('3', 'Audit & POSM', posmSection, 'Pemasangan, penggantian atau perbaikan POSM wajib melampirkan foto Before & After.') +
-      section('4', 'Edukasi Produk', eduSection, 'Sampaikan product knowledge dan program promosi resmi TRW.') +
-      section('5', 'Survey TRW & Market Insight', surveySection, 'Petakan ketersediaan stok, harga, pembanding, persepsi dan unmet demand.') +
-      '<div class="notice warning small">Dengan menekan tombol Simpan, aplikasi merekam koordinat GPS perangkat dan waktu survey lapangan. Data tersimpan offline bila tidak ada sinyal.</div>' +
-      '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button><button type="submit" class="btn btn-yellow">Simpan Kuesioner Survey</button></div>' +
-      '</form>'
+        section('1','Data Kunjungan',visitSection,'Foto tampak depan & tampak dalam toko menjadi evidence utama.') +
+        section('2','Kualifikasi Outlet',qualSection,'Pastikan verifikasi stok aktif, SOW final, dan brand fast moving.') +
+        section('3','Audit & POSM',posmSection,'Pemasangan, penggantian atau perbaikan POSM wajib melampirkan foto Before & After.') +
+        section('4','Edukasi Produk',eduSection,'Sampaikan product knowledge dan program promosi resmi TRW.') +
+        section('5','Survey TRW & Market Insight',surveySection,'Petakan ketersediaan stok, harga, pembanding, persepsi dan unmet demand.') +
+        '<div class="notice warning small">Penyimpanan kuesioner memerlukan koneksi internet. Aplikasi mencatat lokasi GPS dan waktu survey saat Anda menyimpan.</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button><button type="submit" class="btn btn-primary">Simpan Kuesioner Survey</button></div>' +
+      '</form>' 
   }
   function activationFormPage() {
-    if (state.user.role !== 'SPG' && !['ADMIN', 'PM', 'TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
-    if (!state.selectedOutlet) return pageHead('SPG', 'Aktivasi outlet', 'Pilih outlet qualified terlebih dahulu.') + '<div class="card"><button class="btn btn-primary" data-act="nav" data-page="outlets">Cari outlet qualified</button></div>';
+    if (state.user.role !== 'SPG' && !['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
+    if (!state.selectedOutlet) return pageHead('Aktivasi outlet','Pilih outlet qualified terlebih dahulu.') + '<div class="card"><button class="btn btn-primary" data-act="nav" data-page="outlets">Cari outlet qualified</button></div>';
     const o = state.selectedOutlet; const qualified = o.is_qualified || String(o.status).toUpperCase() === 'QUALIFIED';
     const qualification = qualified ? '<div class="notice success">Outlet qualified. Aktivasi dapat dilaporkan.</div>' : '<div class="notice warning">Outlet ini belum berstatus qualified. Aktivasi SPG belum dapat disimpan. Pilih outlet berstatus QUALIFIED atau minta FM menyelesaikan qualification.</div>';
-    const formContent = field('activation_attendance_count', 'Jumlah peserta / mekanik yang hadir', 'number', { min: 0, value: '0' }) + field('activation_education', 'Edukasi TRW dilakukan?', 'select', { required: true, blank: 'Pilih ya / tidak', options: ['Ya', 'Tidak'] }) + field('activation_demo', 'Demo produk dilakukan?', 'select', { required: true, blank: 'Pilih ya / tidak', options: ['Ya', 'Tidak'] }) + field('activation_catalogue', 'Katalog ditinggalkan?', 'select', { required: true, blank: 'Pilih ya / tidak', options: ['Ya', 'Tidak'] }) + field('activation_owner', 'Nama owner / PIC', 'text', { placeholder: 'Pemilik toko / kepala mekanik' }) + field('activation_verified', 'Owner melakukan verifikasi?', 'select', { required: true, blank: 'Pilih ya / tidak', options: ['Ya', 'Tidak'] }) + field('activation_notes', 'Catatan aktivasi', 'textarea', { full: true, placeholder: 'Materi, pertanyaan, kebutuhan follow-up…' }) + photoField('activation', 'Foto aktivitas SPG', 'Wajib untuk evidence activation.', true);
-    return pageHead('SPG ACTIVATION', 'Edukasi & demo TRW', 'Log activation hanya untuk outlet yang telah qualified.') + selectedOutletBlock() + qualification + '<form data-form="activation" class="card"><div class="eyebrow">' + esc(o.outlet_id) + '</div>' + section('1', 'Aktivasi', formContent, 'Catat kehadiran sesi, edukasi, demo, dan bukti foto.') + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Ganti outlet</button><button type="submit" class="btn btn-yellow" ' + (qualified ? '' : 'disabled') + '>Simpan aktivasi</button></div></form>';
+    const formContent = field('activation_attendance_count','Jumlah peserta / mekanik yang hadir','number',{min:0,value:'0'}) + field('activation_education','Edukasi TRW dilakukan?','select',{required:true,blank:'Pilih ya / tidak',options:['Ya','Tidak']}) + field('activation_demo','Demo produk dilakukan?','select',{required:true,blank:'Pilih ya / tidak',options:['Ya','Tidak']}) + field('activation_catalogue','Katalog ditinggalkan?','select',{required:true,blank:'Pilih ya / tidak',options:['Ya','Tidak']}) + field('activation_owner','Nama owner / PIC','text',{placeholder:'Pemilik toko / kepala mekanik'}) + field('activation_verified','Owner melakukan verifikasi?','select',{required:true,blank:'Pilih ya / tidak',options:['Ya','Tidak']}) + field('activation_notes','Catatan aktivasi','textarea',{full:true,placeholder:'Materi, pertanyaan, kebutuhan follow-up…'}) + photoField('activation','Foto aktivitas SPG','Wajib untuk evidence activation.',true);
+    return pageHead('Edukasi & demo TRW','Log activation hanya untuk outlet yang telah qualified.') + selectedOutletBlock() + qualification + '<form data-form="activation" class="card">' + section('1','Aktivasi',formContent,'Catat kehadiran sesi, edukasi, demo, dan bukti foto.') + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Ganti outlet</button><button type="submit" class="btn btn-primary" ' + (qualified ? '' : 'disabled') + '>Simpan aktivasi</button></div></form>';
   }
   function interactionFormPage() {
-    const acts = ((state.reports && state.reports.activations) || []).filter((x) => ['ADMIN', 'PM', 'TL'].includes(state.user.role) || !x.user_id || x.user_id === state.user.user_id).filter((x) => !state.selectedOutlet || String(x.outlet_id) === String(state.selectedOutlet.outlet_id));
+    const acts = ((state.reports && state.reports.activations) || []).filter((x) => ['ADMIN','PM','TL'].includes(state.user.role) || !x.user_id || x.user_id === state.user.user_id).filter((x) => !state.selectedOutlet || String(x.outlet_id) === String(state.selectedOutlet.outlet_id));
     const options = acts.map((a) => ({ value: a.activation_id, label: fmtDate(a.activation_date) + ' · ' + (outletName(a.outlet_id) || a.outlet_id) + ' · ' + a.activation_id.slice(-6) }));
     const selectedActivation = state.lastActivationId || (options[0] && options[0].value) || '';
-    const activationField = field('activation_id', 'Sesi activation', 'select', { required: true, blank: 'Pilih sesi activation', value: selectedActivation, options: options });
-    const content = activationField + field('interaction_count', 'Jumlah end-user yang berinteraksi', 'number', { required: true, min: 0, value: '1' }) + field('interaction_intent', 'Purchase intent (1–5)', 'select', { options: [{ value: '', label: 'Belum dinilai' }, { value: '1', label: '1 — sangat rendah' }, { value: '2', label: '2 — rendah' }, { value: '3', label: '3 — sedang' }, { value: '4', label: '4 — tinggi' }, { value: '5', label: '5 — sangat tinggi' }] }) + field('interaction_brand_used', 'Brand yang digunakan saat ini', 'text', { placeholder: 'Brand existing' }) + field('interaction_brand_considered', 'Brand yang dipertimbangkan', 'text', { placeholder: 'TRW / kompetitor / belum tahu' }) + field('interaction_requested', 'Informasi yang diminta', 'select', { options: ['Harga', 'Ketersediaan SKU', 'Product knowledge', 'Lokasi pembelian', 'Promo', 'Tidak ada', 'Lainnya'] }) + field('interaction_lead', 'Ada potential lead?', 'select', { required: true, options: [{ value: 'Tidak', label: 'Tidak' }, { value: 'Ya', label: 'Ya — perlu follow-up' }] }) + field('interaction_notes', 'Catatan', 'textarea', { full: true, placeholder: 'Catatan singkat, jangan masukkan data pribadi konsumen yang tidak diperlukan.' });
-    const marketInsight = field('spg_current_brand', 'Brand yang ditemukan', 'text', { placeholder: 'Brand yang saat ini dijual/digunakan' }) + field('spg_current_volume', 'Volume / frekuensi penjualan', 'text', { placeholder: 'Estimasi dan periode' }) + field('spg_trw_stock', 'Stok TRW tersedia?', 'select', { options: ['Ya', 'Tidak', 'Belum diketahui'] }) + field('spg_trw_price', 'Harga TRW (Rp)', 'number', { min: 0 }) + field('spg_competitor_brand', 'Brand kompetitor utama', 'text') + field('spg_competitor_price', 'Harga kompetitor (Rp)', 'number', { min: 0 }) + field('spg_barrier_switching', 'Hambatan berpindah brand', 'select', { options: ['Harga', 'Ketersediaan stok', 'Brand preference', 'Kualitas / performa', 'Belum ada kebutuhan', 'Lainnya', 'Tidak diketahui'] }) + field('spg_restock_frequency', 'Frekuensi restock', 'select', { options: ['Mingguan', '2 mingguan', 'Bulanan', 'Tidak rutin', 'Belum diketahui'] }) + field('spg_preferred_sku', 'SKU / kategori pilihan', 'text') + field('spg_brand_awareness', 'Awareness TRW', 'select', { options: ['Tinggi', 'Sedang', 'Rendah', 'Belum tahu TRW'] }) + field('spg_quality_perception', 'Persepsi kualitas', 'select', { options: ['Baik', 'Netral', 'Kurang', 'Belum pernah menggunakan'] }) + field('spg_price_perception', 'Persepsi harga', 'select', { options: ['Kompetitif', 'Sesuai pasar', 'Terlalu tinggi', 'Belum diketahui'] }) + field('spg_unmet_demand', 'Kebutuhan yang belum terpenuhi', 'textarea', { full: true }) + field('spg_market_insight', 'Insight dan rekomendasi', 'textarea', { full: true, placeholder: 'Temuan atau follow-up yang disarankan.' });
-    const insightBlock = '<details class="optional-block"><summary>Tambah market insight pelanggan (opsional)</summary><p class="muted small">Isi bila ada informasi relevan dari percakapan pelanggan atau mekanik.</p><div class="field-grid">' + marketInsight + '</div></details>';
-    return pageHead('SPG REPORT', 'End-user interaction', 'Bedakan jumlah interaksi, purchase intent, lead, dan sales. Interaksi bukan konversi penjualan.') + '<form data-form="interaction" class="card">' + section('1', 'Interaksi konsumen', content, 'Gunakan hitungan agregat. Hindari menyimpan data pribadi yang tidak diperlukan.') + section('2', 'Market insight', insightBlock, 'Opsional; cukup isi informasi yang berhasil diverifikasi.') + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="input">Kembali</button><button type="submit" class="btn btn-yellow">Simpan interaksi</button></div></form>';
+    const activationField = field('activation_id','Sesi activation','select',{required:true,blank:'Pilih sesi activation',value:selectedActivation,options:options});
+    const content = activationField + field('interaction_count','Jumlah end-user yang berinteraksi','number',{required:true,min:0,value:'1'}) + field('interaction_intent','Purchase intent (1–5)','select',{options:[{value:'',label:'Belum dinilai'},{value:'1',label:'1 — sangat rendah'},{value:'2',label:'2 — rendah'},{value:'3',label:'3 — sedang'},{value:'4',label:'4 — tinggi'},{value:'5',label:'5 — sangat tinggi'}]}) + field('interaction_brand_used','Brand yang digunakan saat ini','text',{placeholder:'Brand existing'}) + field('interaction_brand_considered','Brand yang dipertimbangkan','text',{placeholder:'TRW / kompetitor / belum tahu'}) + field('interaction_requested','Informasi yang diminta','select',{options:['Harga','Ketersediaan SKU','Product knowledge','Lokasi pembelian','Promo','Tidak ada','Lainnya']}) + field('interaction_lead','Ada potential lead?','select',{required:true,options:[{value:'Tidak',label:'Tidak'},{value:'Ya',label:'Ya — perlu follow-up'}]}) + field('interaction_notes','Catatan','textarea',{full:true,placeholder:'Catatan singkat, jangan masukkan data pribadi konsumen yang tidak diperlukan.'});
+    const marketInsight = field('spg_current_brand','Brand yang ditemukan','text',{placeholder:'Brand yang saat ini dijual/digunakan'}) + field('spg_current_volume','Volume / frekuensi penjualan','text',{placeholder:'Estimasi dan periode'}) + field('spg_trw_stock','Stok TRW tersedia?','select',{options:['Ya','Tidak','Belum diketahui']}) + field('spg_trw_price','Harga TRW (Rp)','number',{min:0}) + field('spg_competitor_brand','Brand kompetitor utama','text') + field('spg_competitor_price','Harga kompetitor (Rp)','number',{min:0}) + field('spg_barrier_switching','Hambatan berpindah brand','select',{options:['Harga','Ketersediaan stok','Brand preference','Kualitas / performa','Belum ada kebutuhan','Lainnya','Tidak diketahui']}) + field('spg_restock_frequency','Frekuensi restock','select',{options:['Mingguan','2 mingguan','Bulanan','Tidak rutin','Belum diketahui']}) + field('spg_preferred_sku','SKU / kategori pilihan','text') + field('spg_brand_awareness','Awareness TRW','select',{options:['Tinggi','Sedang','Rendah','Belum tahu TRW']}) + field('spg_quality_perception','Persepsi kualitas','select',{options:['Baik','Netral','Kurang','Belum pernah menggunakan']}) + field('spg_price_perception','Persepsi harga','select',{options:['Kompetitif','Sesuai pasar','Terlalu tinggi','Belum diketahui']}) + field('spg_unmet_demand','Kebutuhan yang belum terpenuhi','textarea',{full:true}) + field('spg_market_insight','Insight dan rekomendasi','textarea',{full:true,placeholder:'Temuan atau follow-up yang disarankan.'});
+    const insightBlock = '<details class="optional-block field-full"><summary>Tambah market insight pelanggan (opsional)</summary><p class="muted small">Isi bila ada informasi relevan dari percakapan pelanggan atau mekanik.</p><div class="field-grid">' + marketInsight + '</div></details>';
+    return pageHead('End-user interaction','Bedakan jumlah interaksi, purchase intent, lead, dan sales. Interaksi bukan konversi penjualan.') + '<form data-form="interaction" class="card">' + section('1','Interaksi konsumen',content,'Gunakan hitungan agregat. Hindari menyimpan data pribadi yang tidak diperlukan.') + section('2','Market insight',insightBlock,'Opsional; cukup isi informasi yang berhasil diverifikasi.') + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="input">Kembali</button><button type="submit" class="btn btn-primary">Simpan interaksi</button></div></form>';
   }
   function issueFormPage() {
-    const content = field('issue_title', 'Kendala / issue', 'text', { required: true, placeholder: 'Contoh: stok banner habis' }) + field('issue_action', 'Tindakan yang dibutuhkan', 'textarea', { full: true, placeholder: 'Apa langkah penyelesaiannya?' }) + field('issue_owner', 'PIC tindak lanjut', 'text', { placeholder: 'Nama atau role' }) + field('issue_deadline', 'Target penyelesaian', 'date', {}) + field('issue_priority', 'Prioritas', 'select', { options: ['Normal', 'Tinggi', 'Kritis'] }) + field('issue_notes', 'Catatan tambahan', 'textarea', { full: true, placeholder: 'Detail yang membantu penyelesaian.' });
-    return pageHead('ISSUE TRACKING', 'Catat kendala lapangan', 'Setiap kendala memiliki action, PIC, deadline dan status.') + selectedOutletBlock() + '<form data-form="issue" class="card">' + section('1', 'Kendala dan tindak lanjut', content) + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="input">Kembali</button><button type="submit" class="btn btn-yellow">Simpan issue</button></div></form>';
+    const content = field('issue_title','Kendala / issue','text',{required:true,placeholder:'Contoh: stok banner habis'}) + field('issue_action','Tindakan yang dibutuhkan','textarea',{full:true,placeholder:'Apa langkah penyelesaiannya?'}) + field('issue_owner','PIC tindak lanjut','text',{placeholder:'Nama atau role'}) + field('issue_deadline','Target penyelesaian','date',{}) + field('issue_priority','Prioritas','select',{options:['Normal','Tinggi','Kritis']}) + field('issue_notes','Catatan tambahan','textarea',{full:true,placeholder:'Detail yang membantu penyelesaian.'});
+    return pageHead('Catat kendala lapangan','Setiap kendala memiliki action, PIC, deadline dan status.') + selectedOutletBlock() + '<form data-form="issue" class="card">' + section('1','Kendala dan tindak lanjut',content) + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="input">Kembali</button><button type="submit" class="btn btn-primary">Simpan issue</button></div></form>';
   }
 
   function reportsPage() {
     const m = (state.dashboard && state.dashboard.metrics) || {};
     const periods = (state.reports && state.reports.periods) || {};
     const current = periods[state.periodTab] || {};
-    const tabs = [['daily', 'Harian'], ['weekly', 'Mingguan'], ['monthly', 'Bulanan']].map(([key, label]) => '<button class="filter-chip ' + (state.periodTab === key ? 'active' : '') + '" data-act="report-tab" data-tab="' + key + '">' + label + '</button>').join('');
-    const periodCards = '<div class="card"><div class="card-head"><div><h2>Ringkasan ' + ({ daily: 'harian', weekly: 'mingguan', monthly: 'bulanan' }[state.periodTab]) + '</h2><p class="muted small">' + esc(current.range || 'Muat data laporan untuk menghitung periode.') + '</p></div><button class="btn btn-small btn-plain" data-act="refresh-reports">Refresh</button></div><div class="grid grid-3">' + metricCard('FM visits', current.visits, null, 'Visit tersimpan') + metricCard('POSM reports', current.posm, null, 'Audit / tindakan POSM') + metricCard('Edukasi', current.education, null, 'Log edukasi') + metricCard('Outlet qualification', current.qualifications, null, 'Hasil verifikasi outlet') + metricCard('TRW surveys', current.surveys, null, 'Survey FM') + metricCard('Competitor records', current.competitors, null, 'Observasi kompetitor terstruktur') + metricCard('SPG market insight', current.spgSurveys, null, 'Survey pada sesi activation') + metricCard('SPG activation days', current.activations, null, 'Hari aktivasi') + metricCard('End-user interactions', current.interactions, null, 'Interaksi agregat') + '</div><div class="divider"></div><div class="row"><button class="btn btn-plain" data-act="export-summary" data-period="' + state.periodTab + '">Unduh ringkasan CSV</button><button class="btn btn-primary" data-act="export-records">Unduh data lengkap</button></div></div>';
-    const tabsHead = '<div class="filter-row">' + tabs + '</div>';
+    const tabs = [['daily','Harian'],['weekly','Mingguan'],['monthly','Bulanan']].map(([key,label]) =>
+      filterButton('report-tab', key, label, state.periodTab === key, 'tab')).join('');
+    const periodCards = '<div class="card"><div class="card-head"><div><h2>Ringkasan ' + ({daily:'harian',weekly:'mingguan',monthly:'bulanan'}[state.periodTab]) + '</h2><p class="muted small">' + esc(current.range || 'Muat data laporan untuk menghitung periode.') + '</p></div><button class="btn btn-small btn-plain" data-act="refresh-reports">Muat ulang</button></div><div class="grid grid-3 metric-grid">' + metricCard('FM visits',current.visits, null,'Visit tersimpan') + metricCard('POSM reports',current.posm,null,'Audit / tindakan POSM') + metricCard('Edukasi',current.education,null,'Log edukasi') + metricCard('Outlet qualification',current.qualifications,null,'Hasil verifikasi outlet') + metricCard('TRW surveys',current.surveys,null,'Survey FM') + metricCard('Competitor records',current.competitors,null,'Observasi kompetitor terstruktur') + metricCard('SPG market insight',current.spgSurveys,null,'Survey pada sesi activation') + metricCard('SPG activation days',current.activations,null,'Hari aktivasi') + metricCard('End-user interactions',current.interactions,null,'Interaksi agregat') + '</div><div class="divider"></div><div class="row"><button class="btn btn-plain" data-act="export-summary" data-period="' + state.periodTab + '">Unduh ringkasan CSV</button><button class="btn btn-primary" data-act="export-records">Unduh data lengkap</button></div></div>';
+    const tabsHead = '<div class="filter-row period-tabs" role="group" aria-label="Periode laporan">' + tabs + '</div>';
     const table = reportListSection();
-    return pageHead('REPORTING', 'Laporan & evidence', 'Monitor kualitas eksekusi, bukan hanya jumlah input.') + '<div class="grid grid-3">' + metricCard('Unique outlets', m.uniqueVisited, 180, 'Outlet unik yang pernah dikunjungi') + metricCard('Evidence records', m.evidence, null, 'Foto dan geo records') + metricCard('Open issues', m.openIssues, null, 'Belum closed') + '</div>' + tabsHead + periodCards + '<div class="card"><div class="card-head"><div><h2>Aktivitas terbaru</h2><p class="muted small">Pilih kategori untuk melihat detail dan ekspor.</p></div></div><div class="filter-row">' + [['visits', 'FM Visit'], ['attendance', 'Check In/Out'], ['qualifications', 'Qualification'], ['posm', 'POSM'], ['education', 'Edukasi'], ['surveys', 'Survey FM'], ['competitors', 'Kompetitor'], ['spgSurveys', 'Survey SPG'], ['activations', 'SPG'], ['interactions', 'Interaksi'], ['issues', 'Issues'], ['evidence', 'Evidence']].map(([key, label]) => '<button class="filter-chip ' + (state.reportTab === key ? 'active' : '') + '" data-act="report-list-tab" data-tab="' + key + '">' + label + '</button>').join('') + '</div>' + table + '</div>';
+    return pageHead('Laporan & evidence','Rekap periode, aktivitas lapangan, dan ekspor data.') + '<div class="card metric-strip"><div class="grid grid-3 metric-grid">' + metricCard('Unique outlets',m.uniqueVisited,180,'Outlet unik yang pernah dikunjungi') + metricCard('Evidence records',m.evidence,null,'Foto dan geo records') + metricCard('Open issues',m.openIssues,null,'Belum closed') + '</div></div>' + tabsHead + periodCards + '<div class="card"><div class="card-head"><div><h2>Aktivitas terbaru</h2><p class="muted small">Pilih kategori untuk melihat detail dan ekspor.</p></div></div><div class="filter-row report-tabs" role="group" aria-label="Kategori aktivitas">' + [['visits','FM Visit'],['attendance','Check In/Out'],['qualifications','Qualification'],['posm','POSM'],['education','Edukasi'],['surveys','Survey FM'],['competitors','Kompetitor'],['spgSurveys','Survey SPG'],['activations','SPG'],['interactions','Interaksi'],['issues','Issues'],['evidence','Evidence']].map(([key,label]) => filterButton('report-list-tab', key, label, state.reportTab === key, 'tab')).join('') + '</div>' + table + '</div>';
   }
   function reportListSection() {
     const r = state.reports || {};
-    const key = ['visits', 'attendance', 'qualifications', 'posm', 'education', 'surveys', 'competitors', 'spgSurveys', 'activations', 'interactions', 'issues', 'evidence'].includes(state.reportTab) ? state.reportTab : 'visits';
+    const key = ['visits','attendance','qualifications','posm','education','surveys','competitors','spgSurveys','activations','interactions','issues','evidence'].includes(state.reportTab) ? state.reportTab : 'visits';
     const rows = r[key] || [];
     if (!rows.length) return '<div class="empty-state"><strong>Belum ada data untuk kategori ini</strong>Setelah aktivitas tersimpan dan tersinkron, data akan muncul di sini.</div>';
-    const names = { visits: 'FM Visit', attendance: 'Check In/Out', qualifications: 'Qualification', posm: 'POSM', education: 'Edukasi', surveys: 'Survey FM', competitors: 'Competitor', spgSurveys: 'Survey SPG', activations: 'SPG Activation', interactions: 'Interaction', issues: 'Issue', evidence: 'Evidence' };
-    return '<div class="table-wrap"><table><thead><tr><th>Waktu / Tanggal</th><th>Outlet / Record</th><th>Status / Detail</th></tr></thead><tbody>' + rows.slice(0, 30).map((row) => {
+    const names = {visits:'FM Visit',attendance:'Check In/Out',qualifications:'Qualification',posm:'POSM',education:'Edukasi',surveys:'Survey FM',competitors:'Competitor',spgSurveys:'Survey SPG',activations:'SPG Activation',interactions:'Interaction',issues:'Issue',evidence:'Evidence'};
+    const cells = rows.slice(0, 30).map((row) => {
       const time = row.visit_date || row.work_date || row.activation_date || row.date || row.created_at || row.checkin_at;
       const outlet = outletName(row.outlet_id) || row.outlet_id || row.attendance_id || row.visit_id || row.issue_id || row.activation_id || row.interaction_id || '—';
       const detail = row.status || row.action || row.kind || row.issue || row.notes || row.count || names[key];
-      return '<tr><td>' + esc(fmtDateTime(time)) + '</td><td><strong>' + esc(outlet) + '</strong><div class="tiny muted">' + esc(row.user_name || userName(row.user_id) || row.user_id || '') + '</div></td><td>' + esc(detail) + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
+      return [
+        esc(fmtDateTime(time)),
+        '<strong>' + esc(outlet) + '</strong><div class="tiny muted">' + esc(row.user_name || userName(row.user_id) || row.user_id || '') + '</div>',
+        esc(detail)
+      ];
+    });
+    return tableMarkup(['Waktu / tanggal', 'Outlet / record', 'Status / detail'], cells, names[key]);
   }
 
   function morePage() {
@@ -1427,39 +1486,49 @@
     if (role !== 'CLIENT') cards.push('<button class="action-tile" data-act="sync"><strong>Sinkronisasi data</strong><small>' + (state.queueCount ? state.queueCount + ' data menunggu' : 'Antrean offline dan status koneksi') + '</small></button>');
     cards.push('<button class="action-tile" data-act="change-password"><strong>Ganti password</strong><small>Gunakan password unik minimal 8 karakter.</small></button>');
     cards.push('<button class="action-tile" data-act="nav" data-page="reports"><strong>Laporan</strong><small>Rekap periode dan unduh CSV.</small></button>');
-    if (['ADMIN', 'PM', 'TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
+    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="beatplan"><strong>Rencana kunjungan</strong><small>Jadwal kunjungan, FM, outlet dan status.</small></button>');
     if (role === 'ADMIN') cards.push('<button class="action-tile" data-act="nav" data-page="users"><strong>Manajemen user</strong><small>Buat akun FM, SPG, TL, PM, Admin, atau Client read-only.</small></button>');
-    if (['ADMIN', 'PM', 'TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
-    cards.push('<button class="action-tile' + (role === 'CLIENT' ? ' client-logout-tile' : '') + '" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
+    if (['ADMIN','PM','TL'].includes(role)) cards.push('<button class="action-tile" data-act="nav" data-page="createOutlet"><strong>Tambah outlet</strong><small>Daftarkan outlet aktif baru.</small></button>');
+    cards.push('<button class="action-tile" data-act="logout"><strong>Logout aplikasi</strong><small>' + (role === 'CLIENT' ? 'Keluar dari akun client.' : 'Ini tidak mengakhiri Check In yang masih aktif.') + '</small></button>');
     const note = role === 'CLIENT'
-      ? '<div class="card"><div class="eyebrow">AKSES CLIENT</div><h3>Mode read-only</h3><p class="muted small">Akun client dapat meninjau ringkasan program, outlet, laporan dan evidence yang tersedia. Data operasional tidak dapat ditambahkan atau diubah dari akun ini.</p></div>'
-      : '<div class="card"><h3>Catatan penggunaan</h3><p class="muted small">Aplikasi membutuhkan HTTPS untuk akses kamera dan GPS. Ketika offline, kiriman yang didukung disimpan di perangkat dan ditandai menunggu sinkronisasi. Jangan menghapus data browser sebelum antrean terkirim.</p><p class="muted small">Login/Logout mengatur sesi aplikasi. Check In/Check Out merekam kehadiran lapangan dengan foto dan GPS; keduanya tidak otomatis saling mengakhiri.</p></div>';
-    return pageHead('MENU', 'Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0, 1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note;
+      ? '<div class="card"><h2>Akses hanya baca</h2><p class="muted small">Akun client dapat meninjau ringkasan program, outlet, laporan dan evidence yang tersedia. Data operasional tidak dapat ditambahkan atau diubah dari akun ini.</p></div>'
+      : '<div class="card"><h2>Catatan penggunaan</h2><p class="muted small">Aplikasi membutuhkan HTTPS untuk akses kamera dan GPS. Ketika offline, kiriman yang didukung disimpan di perangkat dan ditandai menunggu sinkronisasi. Jangan menghapus data browser sebelum antrean terkirim.</p><p class="muted small">Login/Logout mengatur sesi aplikasi. Check In/Check Out merekam kehadiran lapangan dengan foto dan GPS; keduanya tidak otomatis saling mengakhiri.</p></div>';
+    const locationNote = role === 'FM'
+      ? '<p class="notice">Posisi petugas FM diperbarui berkala selama Anda masuk dan memberi izin lokasi.</p>'
+      : '';
+    return pageHead('Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note + locationNote + '<p class="version-note">TRW Field · Versi 1.6.5</p>';
   }
 
   function usersPage() {
     if (state.user.role !== 'ADMIN') return '<div class="card">Akses hanya untuk Admin.</div>';
-    const form = field('user_full_name', 'Nama lengkap', 'text', { required: true }) + field('user_username', 'Username', 'text', { required: true, placeholder: 'Contoh: fm.jakarta01' }) + field('user_role', 'Role', 'select', { required: true, options: ['FM', 'SPG', 'TL', 'PM', 'ADMIN', 'CLIENT'] }) + field('user_phone', 'Nomor telepon', 'tel', { placeholder: 'Opsional' }) + field('user_password', 'Password awal', 'password', { required: true, hint: 'Minimal 8 karakter. Berikan melalui kanal yang aman.' });
-    const list = state.users.length ? '<div class="table-wrap"><table><thead><tr><th>Nama / Username</th><th>Role</th><th>Status</th><th>Aksi</th></tr></thead><tbody>' + state.users.map((u) => '<tr><td><strong>' + esc(u.full_name) + '</strong><div class="tiny muted">' + esc(u.username) + '</div><div class="tiny muted">Last login: ' + esc(fmtDateTime(u.last_login)) + '</div></td><td>' + esc(u.role) + '</td><td>' + (u.active ? '<span class="tag green">Aktif</span>' : '<span class="tag red">Nonaktif</span>') + '</td><td><button class="btn btn-small btn-plain" data-act="toggle-user" data-id="' + esc(u.user_id) + '" data-active="' + (u.active ? 'false' : 'true') + '">' + (u.active ? 'Nonaktifkan' : 'Aktifkan') + '</button><button class="btn btn-small btn-soft" data-act="reset-password" data-id="' + esc(u.user_id) + '">Reset password</button></td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada user.</div>';
-    return pageHead('ADMIN', 'Manajemen user', 'Buat akun dengan role yang tepat dan nonaktifkan akun yang sudah tidak digunakan.') + '<div class="card"><h2>Buat user baru</h2><form data-form="createUser"><div class="field-grid">' + form + '</div><button type="submit" class="btn btn-yellow btn-block">Buat akun</button></form></div><div class="card"><div class="card-head"><div><h2>Daftar user</h2><p class="muted small">Password dan hash tidak pernah ditampilkan.</p></div><button class="btn btn-small btn-plain" data-act="refresh-users">Refresh</button></div>' + list + '</div>';
+    const form = field('user_full_name','Nama lengkap','text',{required:true}) + field('user_username','Username','text',{required:true,placeholder:'Contoh: fm.jakarta01'}) + field('user_role','Role','select',{required:true,options:['FM','SPG','TL','PM','ADMIN','CLIENT']}) + field('user_phone','Nomor telepon','tel',{placeholder:'Opsional'}) + field('user_password','Password awal','password',{required:true,hint:'Minimal 8 karakter. Berikan melalui kanal yang aman.'});
+    const rows = state.users.map((u) => [
+      '<strong>' + esc(u.full_name) + '</strong><div class="tiny muted">' + esc(u.username) + '</div><div class="tiny muted">Login terakhir: ' + esc(fmtDateTime(u.last_login)) + '</div>',
+      esc(u.role),
+      u.active ? '<span class="tag green">Aktif</span>' : '<span class="tag red">Nonaktif</span>',
+      '<div class="table-actions"><button class="btn btn-small btn-plain" data-act="toggle-user" data-id="' + esc(u.user_id) + '" data-active="' + (u.active ? 'false' : 'true') + '">' + (u.active ? 'Nonaktifkan' : 'Aktifkan') + '</button><button class="btn btn-small btn-soft" data-act="reset-password" data-id="' + esc(u.user_id) + '">Reset password</button></div>'
+    ]);
+    const list = rows.length ? tableMarkup(['Nama / username', 'Role', 'Status', 'Aksi'], rows, 'Daftar user') :
+      '<div class="empty-state">Belum ada user.</div>';
+    return pageHead('Manajemen user','Buat akun dengan role yang tepat dan nonaktifkan akun yang sudah tidak digunakan.') + '<div class="card"><h2>Buat user baru</h2><form data-form="createUser"><div class="field-grid">' + form + '</div><div class="form-actions"><button type="submit" class="btn btn-primary">Buat akun</button></div></form></div><div class="card"><div class="card-head"><div><h2>Daftar user</h2><p class="muted small">Password dan hash tidak pernah ditampilkan.</p></div><button class="btn btn-small btn-plain" data-act="refresh-users">Muat ulang</button></div>' + list + '</div>';
   }
 
   function createOutletPage() {
-    if (!['ADMIN', 'PM', 'TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
-    const content = field('new_outlet_name', 'Nama outlet', 'text', { required: true }) + field('new_outlet_city', 'Kota', 'select', { required: true, options: ['Jakarta Pusat', 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Selatan', 'Jakarta Timur', 'Bogor', 'Depok', 'Tangerang', 'Tangerang Selatan', 'Bekasi', 'Lainnya'] }) + field('new_outlet_area', 'Area / kecamatan', 'text', { placeholder: 'Area cluster' }) + field('new_outlet_address', 'Alamat', 'textarea', { full: true }) + field('new_outlet_type', 'Tipe outlet', 'select', { options: ['Toko sparepart', 'Distributor', 'Bengkel', 'Workshop', 'Toko sparepart dan bengkel', 'Lainnya'] }) + field('new_outlet_segment', 'Klasifikasi SOW', 'select', { required: true, options: ['Grosir', 'Semi Grosir', 'Retail', 'Belum diklasifikasi'] }) + field('new_outlet_priority', 'Prioritas', 'select', { options: ['P1', 'P2', 'P3'] }) + field('new_outlet_contact', 'Nama PIC', 'text') + field('new_outlet_phone', 'Telepon PIC', 'tel');
-    return pageHead('MASTER DATA', 'Tambah outlet', 'Data baru dicatat sebagai outlet aktif; prospect hasil riset tetap dikelola di Prospects.') + '<form data-form="createOutlet" class="card"><div class="field-grid">' + content + '</div><div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Batal</button><button type="submit" class="btn btn-yellow">Simpan outlet</button></div></form>';
+    if (!['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
+    const content = field('new_outlet_name','Nama outlet','text',{required:true}) + field('new_outlet_city','Kota','select',{required:true,options:['Jakarta Pusat','Jakarta Utara','Jakarta Barat','Jakarta Selatan','Jakarta Timur','Bogor','Depok','Tangerang','Tangerang Selatan','Bekasi','Lainnya']}) + field('new_outlet_area','Area / kecamatan','text',{placeholder:'Area cluster'}) + field('new_outlet_address','Alamat','textarea',{full:true}) + field('new_outlet_type','Tipe outlet','select',{options:['Toko sparepart','Distributor','Bengkel','Workshop','Toko sparepart dan bengkel','Lainnya']}) + field('new_outlet_segment','Klasifikasi SOW','select',{required:true,options:['Grosir','Semi Grosir','Retail','Belum diklasifikasi']}) + field('new_outlet_priority','Prioritas','select',{options:['P1','P2','P3']}) + field('new_outlet_contact','Nama PIC','text') + field('new_outlet_phone','Telepon PIC','tel');
+    return pageHead('Tambah outlet','Data baru dicatat sebagai outlet aktif; prospect hasil riset tetap dikelola di Prospects.') + '<form data-form="createOutlet" class="card"><div class="field-grid">' + content + '</div><div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="outlets">Batal</button><button type="submit" class="btn btn-primary">Simpan outlet</button></div></form>';
   }
 
   function beatPlanPage() {
-    if (!['ADMIN', 'PM', 'TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
-    const canEdit = ['ADMIN', 'TL'].includes(state.user.role);
-    const userOptions = state.users.filter((u) => u.active && u.role === 'FM').map((u) => ({ value: u.user_id, label: u.full_name + ' · FM' }));
+    if (!['ADMIN','PM','TL'].includes(state.user.role)) return '<div class="card">Akses tidak diizinkan.</div>';
+    const canEdit = ['ADMIN','TL'].includes(state.user.role);
+    const userOptions = state.users.filter((u) => u.active && u.role === 'FM').map((u) => ({value:u.user_id,label:u.full_name + ' · FM'}));
     const outlets = state.outletList || [];
 
-    const baseFields = field('beat_date', 'Tanggal Rute', 'date', { required: true, value: localDate() }) +
-      field('beat_week', 'Minggu Program', 'text', { placeholder: 'Contoh: Week 03' }) +
-      field('beat_user', 'Petugas FM', 'select', { required: true, blank: 'Pilih Petugas FM', options: userOptions }) +
-      field('beat_notes', 'Catatan Rute / Cluster', 'textarea', { full: true, placeholder: 'Cluster / arahan / jadwal rute' });
+    const baseFields = field('beat_date','Tanggal Rute','date',{required:true,value:localDate()}) +
+      field('beat_week','Minggu Program','text',{placeholder:'Contoh: Week 03'}) +
+      field('beat_user','Petugas FM','select',{required:true,blank:'Pilih Petugas FM',options:userOptions}) +
+      field('beat_notes','Catatan Rute / Cluster','textarea',{full:true,placeholder:'Cluster / arahan / jadwal rute'});
 
     const outletChecklistHtml = outlets.map((o) => {
       const segment = o.segment_final || o.segment_indicative || 'Belum diklasifikasi';
@@ -1468,10 +1537,10 @@
       return '<label class="beat-outlet-row" data-outlet-id="' + esc(o.outlet_id) + '" data-search="' + esc((o.outlet_name + ' ' + city + ' ' + (o.area || '')).toLowerCase()) + '" data-city="' + esc(city.toLowerCase()) + '">' +
         '<input type="checkbox" name="beat_outlet_ids" value="' + esc(o.outlet_id) + '" class="beat-outlet-checkbox">' +
         '<div class="beat-outlet-info">' +
-        '<div class="beat-outlet-name">' + esc(o.outlet_name) + '</div>' +
-        '<div class="beat-outlet-sub">' + esc(city) + esc(area) + ' · <span class="tag gray tiny">' + esc(segment) + '</span> ' + (o.priority ? '<span class="tag yellow tiny">' + esc(o.priority) + '</span>' : '') + '</div>' +
+          '<div class="beat-outlet-name">' + esc(o.outlet_name) + '</div>' +
+          '<div class="beat-outlet-sub">' + esc(city) + esc(area) + ' · <span class="tag gray tiny">' + esc(segment) + '</span> ' + (o.priority ? '<span class="tag yellow tiny">' + esc(o.priority) + '</span>' : '') + '</div>' +
         '</div>' +
-        '</label>';
+      '</label>';
     }).join('');
 
     const cities = Array.from(new Set(outlets.map((o) => o.city).filter(Boolean))).sort();
@@ -1480,29 +1549,36 @@
 
     const batchSelectorHtml = '<div class="beat-outlet-selector field-full">' +
       '<div class="beat-selector-toolbar">' +
-      '<div>' +
-      '<strong>Pilih Outlet untuk Rute (Maksimal 20 Outlet Sekaligus)</strong>' +
-      '<div class="form-note">Centang hingga 20 outlet yang akan ditugaskan ke FM pada tanggal ini.</div>' +
-      '</div>' +
-      '<div><span id="beat-counter-tag" class="tag yellow beat-counter-tag">0 / 20 Outlet Terpilih</span></div>' +
+        '<div>' +
+          '<strong>Pilih outlet untuk rute</strong>' +
+          '<div class="form-note">Centang hingga 20 outlet yang akan ditugaskan ke FM pada tanggal ini.</div>' +
+        '</div>' +
+        '<div><span id="beat-counter-tag" class="tag yellow beat-counter-tag">0 / 20 Outlet Terpilih</span></div>' +
       '</div>' +
       '<div class="beat-selector-controls">' +
-      '<input type="search" id="beat-outlet-search" placeholder="Cari nama toko / area..." style="flex:1;min-width:180px;height:36px;padding:6px 12px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;">' +
-      '<select id="beat-city-filter" style="height:36px;padding:4px 8px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;">' + cityFilterOptions + '</select>' +
-      '<button type="button" class="btn btn-small btn-yellow" data-act="beat-select-20">⚡ Pilih 20 Outlet Teratas</button>' +
-      '<button type="button" class="btn btn-small btn-plain" data-act="beat-clear-selection">🧹 Kosongkan</button>' +
+        '<input type="search" id="beat-outlet-search" placeholder="Cari nama toko atau area" aria-label="Cari outlet untuk rute">' +
+        '<select id="beat-city-filter" aria-label="Filter kota">' + cityFilterOptions + '</select>' +
+        '<button type="button" class="btn btn-small btn-primary" data-act="beat-select-20">Pilih 20 teratas</button>' +
+        '<button type="button" class="btn btn-small btn-plain" data-act="beat-clear-selection">Kosongkan</button>' +
       '</div>' +
-      '<div class="beat-outlets-scroll" id="beat-outlets-scroll" style="margin-top:10px;">' +
-      (outletChecklistHtml || '<div class="empty-state">Belum ada outlet terdaftar.</div>') +
+      '<div class="beat-outlets-scroll" id="beat-outlets-scroll">' +
+        (outletChecklistHtml || '<div class="empty-state">Belum ada outlet terdaftar.</div>') +
       '</div>' +
-      '</div>';
+    '</div>';
 
     const form = canEdit
-      ? '<div class="card"><div class="card-head"><div><h2>Assign Rencana Kunjungan (Hingga 20 Outlet Sekaligus)</h2><p class="muted small">Tentukan petugas FM, tanggal kerja, lalu centang hingga 20 outlet sekaligus.</p></div></div><form data-form="beatPlan"><div class="field-grid">' + baseFields + '</div>' + batchSelectorHtml + '<button type="submit" class="btn btn-yellow btn-block" style="margin-top:16px;font-weight:700;">Simpan Rencana Kunjungan (Maks 20 Outlet)</button></form></div>'
+      ? '<div class="card"><div class="card-head"><div><h2>Buat penugasan rute</h2><p class="muted small">Tentukan petugas FM, tanggal kerja, lalu centang hingga 20 outlet sekaligus.</p></div></div><form data-form="beatPlan"><div class="field-grid">' + baseFields + '</div>' + batchSelectorHtml + '<div class="form-actions"><button type="submit" class="btn btn-primary">Simpan rencana kunjungan</button></div></form></div>'
       : '<div class="card"><div class="notice">Akun PM dapat melihat jadwal, sedangkan pembuatan dan perubahan penugasan rute dilakukan oleh TL/Admin.</div></div>';
 
-    const list = state.beatPlan.length ? '<div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Petugas</th><th>Outlet</th><th>Status</th></tr></thead><tbody>' + state.beatPlan.map((b) => '<tr><td>' + esc(fmtDate(b.date)) + '<div class="tiny muted">' + esc(b.week || '') + '</div></td><td>' + esc(userName(b.user_id) || b.user_id) + '</td><td>' + esc(outletName(b.outlet_id) || b.outlet_id) + '</td><td>' + esc(b.status || 'PLANNED') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty-state">Belum ada rencana kunjungan.</div>';
-    return pageHead('OPERASIONAL', 'Rencana kunjungan', 'TL/Admin menetapkan rencana kunjungan hingga 20 outlet sekaligus per FM.') + form + '<div class="card"><div class="card-head"><div><h2>Daftar rencana</h2><p class="muted small">Jadwal kunjungan yang sudah dibuat.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Refresh</button></div>' + list + '</div>';
+    const rows = state.beatPlan.map((b) => [
+      esc(fmtDate(b.date)) + '<div class="tiny muted">' + esc(b.week || '') + '</div>',
+      esc(userName(b.user_id) || b.user_id),
+      esc(outletName(b.outlet_id) || b.outlet_id),
+      esc(b.status || 'PLANNED')
+    ]);
+    const list = rows.length ? tableMarkup(['Tanggal', 'Petugas', 'Outlet', 'Status'], rows, 'Daftar rencana kunjungan') :
+      '<div class="empty-state">Belum ada rencana kunjungan.</div>';
+    return pageHead('Rencana kunjungan','TL/Admin menetapkan rencana kunjungan hingga 20 outlet sekaligus per FM.') + form + '<div class="card"><div class="card-head"><div><h2>Daftar rencana</h2><p class="muted small">Jadwal kunjungan yang sudah dibuat.</p></div><button class="btn btn-small btn-plain" data-act="refresh-beats">Muat ulang</button></div>' + list + '</div>';
   }
   function outletName(id) { const outlet = state.outletList.find((o) => String(o.outlet_id) === String(id)); return outlet ? outlet.outlet_name : ''; }
   function userName(id) { const user = state.users.find((u) => String(u.user_id) === String(id)); return user ? user.full_name : ''; }
@@ -1511,7 +1587,7 @@
   async function uploadEvidenceFor(formPhotoData, kind, recordId, outletId, geo, stableEvidenceId) {
     if (!formPhotoData) return '';
     const evidenceId = stableEvidenceId || uid('EVD');
-    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', record_id: recordId, outlet_id: outletId || '', kind: kind, photo: { dataUrl: formPhotoData.dataUrl, mimeType: 'image/jpeg' }, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
+    const result = await apiPost('uploadEvidence', { evidence_id: evidenceId, module: 'FIELD_REPORT', record_id: recordId, outlet_id: outletId || '', kind: kind, photo: {dataUrl:formPhotoData.dataUrl,mimeType:'image/jpeg'}, lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy, at: formPhotoData.capturedAt || new Date().toISOString() });
     return result.id || evidenceId;
   }
 
@@ -1707,7 +1783,8 @@
       }
     };
 
-    // Optimistic UI updates
+    await apiPost('saveFullVisit', payload);
+
     if (state.user.role === 'FM' && state.fmRoute) {
       const item = (state.fmRoute.items || []).find((i) => String(i.outlet_id) === String(outlet.outlet_id));
       if (item) {
@@ -1729,15 +1806,8 @@
     state.inputType = '';
     state.page = 'home';
     render();
-    toast('Kuesioner survey tersimpan!', 'ok');
-
-    apiPost('saveFullVisit', payload).then((res) => {
-      toast(res && res.queued ? 'Kuesioner masuk antrean offline.' : 'Kuesioner survey berhasil disimpan ke server.', 'ok');
-      refreshAll(false);
-    }).catch((err) => {
-      console.warn('saveFullVisit error:', err);
-      toast(err.message || 'Gagal menyimpan laporan survey.', 'bad');
-    });
+    toast('Kuesioner survey berhasil disimpan ke server.', 'ok');
+    await refreshAll(false);
   }
 
   async function submitActivationForm(form) {
@@ -1750,28 +1820,28 @@
     if (!state.activationFlow) state.activationFlow = { activationId: uid('ACT'), evidenceId: uid('EVD') };
     const activationId = state.activationFlow.activationId;
     const evidenceId = await uploadEvidenceFor(photo, 'SPG_ACTIVATION', activationId, outlet.outlet_id, geo, state.activationFlow.evidenceId);
-    const result = await apiPost('saveSpgActivation', { activation_id: activationId, activation_date: localDate(), outlet_id: outlet.outlet_id, qualified_visit_id: outlet.latest_qualified_visit_id || outlet.outlet_id, attendance_id: state.openAttendance.attendance_id, start_at: new Date().toISOString(), attendance_count: fieldVal(form, 'activation_attendance_count'), education_done: fieldVal(form, 'activation_education') === 'Ya', demo_done: fieldVal(form, 'activation_demo') === 'Ya', catalogue_left: fieldVal(form, 'activation_catalogue') === 'Ya', owner_name: fieldVal(form, 'activation_owner'), owner_verified: fieldVal(form, 'activation_verified') === 'Ya', evidence_id: evidenceId, notes: fieldVal(form, 'activation_notes') });
+    const result = await apiPost('saveSpgActivation', { activation_id: activationId, activation_date: localDate(), outlet_id: outlet.outlet_id, qualified_visit_id: outlet.latest_qualified_visit_id || outlet.outlet_id, attendance_id: state.openAttendance.attendance_id, start_at: new Date().toISOString(), attendance_count: fieldVal(form,'activation_attendance_count'), education_done: fieldVal(form,'activation_education') === 'Ya', demo_done: fieldVal(form,'activation_demo') === 'Ya', catalogue_left: fieldVal(form,'activation_catalogue') === 'Ya', owner_name: fieldVal(form,'activation_owner'), owner_verified: fieldVal(form,'activation_verified') === 'Ya', evidence_id: evidenceId, notes: fieldVal(form,'activation_notes') });
     state.lastActivationId = result.id || activationId; state.activationFlow = null; state.photos = {}; state.inputType = 'interaction'; state.page = 'input'; await refreshAll(false); toast(result.queued ? 'Aktivasi menunggu sinkronisasi.' : 'Aktivasi tersimpan. Lanjutkan input interaksi.', 'ok'); render();
   }
 
   async function submitInteractionForm(form) {
     if (!state.openAttendance || !state.openAttendance.attendance_id) throw new Error('Lakukan Check In dengan foto dan GPS sebelum mencatat interaksi.');
     if (!state.selectedOutlet) throw new Error('Pilih outlet aktivasi di menu Outlet sebelum input interaksi.');
-    const activation = fieldVal(form, 'activation_id') || state.lastActivationId;
+    const activation = fieldVal(form,'activation_id') || state.lastActivationId;
     if (!activation) throw new Error('Pilih sesi activation. Buat activation terlebih dahulu.');
-    const result = await apiPost('saveInteraction', { interaction_id: (state.interactionFlowId || (state.interactionFlowId = uid('INT'))), activation_id: activation, outlet_id: state.selectedOutlet.outlet_id, attendance_id: state.openAttendance ? state.openAttendance.attendance_id : '', count: fieldVal(form, 'interaction_count'), purchase_intent_1_5: fieldVal(form, 'interaction_intent'), brand_used: fieldVal(form, 'interaction_brand_used'), brand_considered: fieldVal(form, 'interaction_brand_considered'), information_requested: fieldVal(form, 'interaction_requested'), potential_lead: fieldVal(form, 'interaction_lead') === 'Ya', notes: fieldVal(form, 'interaction_notes') });
-    const surveyFields = ['spg_current_brand', 'spg_current_volume', 'spg_trw_stock', 'spg_trw_price', 'spg_competitor_brand', 'spg_competitor_price', 'spg_barrier_switching', 'spg_restock_frequency', 'spg_preferred_sku', 'spg_brand_awareness', 'spg_quality_perception', 'spg_price_perception', 'spg_unmet_demand', 'spg_market_insight'];
-    const hasInsight = surveyFields.some((name) => !!fieldVal(form, name)) || !!fieldVal(form, 'interaction_intent');
+    const result = await apiPost('saveInteraction', { interaction_id: (state.interactionFlowId || (state.interactionFlowId = uid('INT'))), activation_id: activation, outlet_id: state.selectedOutlet.outlet_id, attendance_id: state.openAttendance ? state.openAttendance.attendance_id : '', count: fieldVal(form,'interaction_count'), purchase_intent_1_5: fieldVal(form,'interaction_intent'), brand_used: fieldVal(form,'interaction_brand_used'), brand_considered: fieldVal(form,'interaction_brand_considered'), information_requested: fieldVal(form,'interaction_requested'), potential_lead: fieldVal(form,'interaction_lead') === 'Ya', notes: fieldVal(form,'interaction_notes') });
+    const surveyFields = ['spg_current_brand','spg_current_volume','spg_trw_stock','spg_trw_price','spg_competitor_brand','spg_competitor_price','spg_barrier_switching','spg_restock_frequency','spg_preferred_sku','spg_brand_awareness','spg_quality_perception','spg_price_perception','spg_unmet_demand','spg_market_insight'];
+    const hasInsight = surveyFields.some((name) => !!fieldVal(form,name)) || !!fieldVal(form,'interaction_intent');
     if (hasInsight) {
       const spgSurveyId = state.spgSurveyFlowId || (state.spgSurveyFlowId = uid('SPS'));
-      await apiPost('saveSpgSurvey', { spg_survey_id: spgSurveyId, activation_id: activation, outlet_id: state.selectedOutlet.outlet_id, attendance_id: state.openAttendance ? state.openAttendance.attendance_id : '', purchase_intent: fieldVal(form, 'interaction_intent'), current_brand: fieldVal(form, 'spg_current_brand'), current_volume: fieldVal(form, 'spg_current_volume'), trw_stock: fieldVal(form, 'spg_trw_stock'), trw_price: fieldVal(form, 'spg_trw_price'), competitor_brand: fieldVal(form, 'spg_competitor_brand'), competitor_price: fieldVal(form, 'spg_competitor_price'), barrier_switching: fieldVal(form, 'spg_barrier_switching'), restock_frequency: fieldVal(form, 'spg_restock_frequency'), preferred_sku: fieldVal(form, 'spg_preferred_sku'), brand_awareness: fieldVal(form, 'spg_brand_awareness'), quality_perception: fieldVal(form, 'spg_quality_perception'), price_perception: fieldVal(form, 'spg_price_perception'), unmet_demand: fieldVal(form, 'spg_unmet_demand'), insight: fieldVal(form, 'spg_market_insight') });
+      await apiPost('saveSpgSurvey', { spg_survey_id: spgSurveyId, activation_id: activation, outlet_id: state.selectedOutlet.outlet_id, attendance_id: state.openAttendance ? state.openAttendance.attendance_id : '', purchase_intent: fieldVal(form,'interaction_intent'), current_brand: fieldVal(form,'spg_current_brand'), current_volume: fieldVal(form,'spg_current_volume'), trw_stock: fieldVal(form,'spg_trw_stock'), trw_price: fieldVal(form,'spg_trw_price'), competitor_brand: fieldVal(form,'spg_competitor_brand'), competitor_price: fieldVal(form,'spg_competitor_price'), barrier_switching: fieldVal(form,'spg_barrier_switching'), restock_frequency: fieldVal(form,'spg_restock_frequency'), preferred_sku: fieldVal(form,'spg_preferred_sku'), brand_awareness: fieldVal(form,'spg_brand_awareness'), quality_perception: fieldVal(form,'spg_quality_perception'), price_perception: fieldVal(form,'spg_price_perception'), unmet_demand: fieldVal(form,'spg_unmet_demand'), insight: fieldVal(form,'spg_market_insight') });
     }
     state.interactionFlowId = ''; state.spgSurveyFlowId = ''; state.inputType = ''; state.page = 'home'; await refreshAll(false); toast(result.queued ? 'Interaksi masuk antrean.' : 'Interaksi berhasil disimpan.', 'ok'); render();
   }
 
   async function submitIssueForm(form) {
     if (!state.openAttendance || !state.openAttendance.attendance_id) throw new Error('Lakukan Check In dengan foto dan GPS sebelum menyimpan issue lapangan.');
-    const result = await apiPost('saveIssue', { attendance_id: state.openAttendance.attendance_id, issue_id: (state.issueFlowId || (state.issueFlowId = uid('ISS'))), date: localDate(), outlet_id: state.selectedOutlet ? state.selectedOutlet.outlet_id : '', issue: fieldVal(form, 'issue_title'), action: fieldVal(form, 'issue_action'), owner: fieldVal(form, 'issue_owner'), deadline: fieldVal(form, 'issue_deadline'), status: 'OPEN', notes: 'Priority: ' + (fieldVal(form, 'issue_priority') || 'Normal') + (fieldVal(form, 'issue_notes') ? ' | ' + fieldVal(form, 'issue_notes') : '') });
+    const result = await apiPost('saveIssue', { attendance_id: state.openAttendance.attendance_id, issue_id: (state.issueFlowId || (state.issueFlowId = uid('ISS'))), date: localDate(), outlet_id: state.selectedOutlet ? state.selectedOutlet.outlet_id : '', issue: fieldVal(form,'issue_title'), action: fieldVal(form,'issue_action'), owner: fieldVal(form,'issue_owner'), deadline: fieldVal(form,'issue_deadline'), status: 'OPEN', notes: 'Priority: ' + (fieldVal(form,'issue_priority') || 'Normal') + (fieldVal(form,'issue_notes') ? ' | ' + fieldVal(form,'issue_notes') : '') });
     state.issueFlowId = ''; state.inputType = ''; state.page = 'reports'; await refreshAll(false); toast(result.queued ? 'Issue masuk antrean offline.' : 'Issue tersimpan.', 'ok'); render();
   }
 
@@ -1833,7 +1903,7 @@
       }
       const requests = [apiGet('dashboard'), apiGet('outlets', { limit: 500 }), apiGet('reports', { limit: 100 }), apiGet('attendance')];
       if (state.user.role === 'FM') requests.push(apiGet('fmRoute'));
-      if (['ADMIN', 'PM', 'TL'].includes(state.user.role)) {
+      if (['ADMIN','PM','TL'].includes(state.user.role)) {
         requests.push(apiGet(state.user.role === 'ADMIN' ? 'users' : 'team').catch(() => ({ items: [] })));
         requests.push(apiGet('beatPlan').catch(() => ({ items: [] })));
       }
@@ -1841,7 +1911,7 @@
       const dashboard = results[0], outlets = results[1], reports = results[2], attendance = results[3];
       const fmRoute = state.user.role === 'FM' ? results[4] : null;
 
-      if (['ADMIN', 'PM', 'TL'].includes(state.user.role)) {
+      if (['ADMIN','PM','TL'].includes(state.user.role)) {
         const uIdx = state.user.role === 'FM' ? 5 : 4;
         const bIdx = state.user.role === 'FM' ? 6 : 5;
         if (results[uIdx] && results[uIdx].items) { state.users = results[uIdx].items; await metaPut('users', state.users); }
@@ -1875,8 +1945,7 @@
   }
 
   function signOutLocal() {
-    stopFmLocationTracking(); state.token = ''; state.user = null; localStorage.removeItem(STORE.token); localStorage.removeItem(STORE.user); state.page = 'home'; state.openAttendance = readJson(localStorage.getItem(STORE.openAttendance), null); render();
-  }
+    stopFmLocationTracking(); state.token = ''; state.user = null; localStorage.removeItem(STORE.token); localStorage.removeItem(STORE.user); state.page = 'home'; state.openAttendance = readJson(localStorage.getItem(STORE.openAttendance), null); render(); }
   async function loginSubmit(form) {
     const username = fieldVal(form, 'username');
     const password = fieldVal(form, 'password');
@@ -1890,7 +1959,7 @@
     toast('Login berhasil. Memuat data di latar belakang…', 'ok');
     if (state.user.role === 'FM') startFmLocationTracking();
     render();
-    updateQueueState().catch(() => { });
+    updateQueueState().catch(() => {});
     refreshAll(false).catch((error) => {
       console.warn('Background refresh failed:', error);
       toast('Anda sudah login. Sebagian data belum termuat; coba Muat Ulang Data.', 'bad');
@@ -1901,23 +1970,23 @@
     const lines = [headers].concat(rows).map((row) => row.map((value) => {
       let text = value == null ? '' : String(value);
       if (/^[=+@\-]/.test(text)) text = "'" + text;
-      return '"' + text.replace(/"/g, '""') + '"';
+      return '"' + text.replace(/"/g,'""') + '"';
     }).join(','));
-    const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function exportSummary(period) {
     const summary = (state.reports && state.reports.periods && state.reports.periods[period]) || {};
     const data = Object.keys(summary).filter((key) => key !== 'range').map((key) => [key, summary[key]]);
     data.unshift(['Period', period], ['Range', summary.range || '']);
-    downloadCSV('TRW_' + period + '_summary_' + new Date().toISOString().slice(0, 10) + '.csv', ['Metric', 'Value'], data);
+    downloadCSV('TRW_' + period + '_summary_' + new Date().toISOString().slice(0,10) + '.csv', ['Metric','Value'], data);
   }
   async function exportRecords() {
-    const dataset = ['visits', 'attendance', 'qualifications', 'posm', 'education', 'surveys', 'competitors', 'spgSurveys', 'activations', 'interactions', 'issues', 'evidence'].includes(state.reportTab) ? state.reportTab : 'visits';
+    const dataset = ['visits','attendance','qualifications','posm','education','surveys','competitors','spgSurveys','activations','interactions','issues','evidence'].includes(state.reportTab) ? state.reportTab : 'visits';
     const result = await apiGet('exportData', { dataset: dataset, period: state.periodTab });
     const rows = result.items || [];
     if (!rows.length) { toast('Tidak ada data pada periode yang dipilih.'); return; }
     const headers = Array.from(rows.reduce((set, row) => { Object.keys(row).forEach((key) => set.add(key)); return set; }, new Set()));
-    downloadCSV('TRW_' + dataset + '_' + state.periodTab + '_' + new Date().toISOString().slice(0, 10) + '.csv', headers, rows.map((row) => headers.map((key) => row[key] == null ? '' : row[key])));
+    downloadCSV('TRW_' + dataset + '_' + state.periodTab + '_' + new Date().toISOString().slice(0,10) + '.csv', headers, rows.map((row) => headers.map((key) => row[key] == null ? '' : row[key])));
     if (result.truncated) toast('Ekspor dibatasi ke 5.000 baris terakhir.');
     else toast(rows.length + ' baris berhasil diekspor.', 'ok');
   }
@@ -1934,8 +2003,8 @@
       else if (type === 'interaction') await submitInteractionForm(form);
       else if (type === 'issue') await submitIssueForm(form);
       else if (type === 'createUser') {
-        await apiPost('createUser', { full_name: fieldVal(form, 'user_full_name'), username: fieldVal(form, 'user_username'), role: fieldVal(form, 'user_role'), phone: fieldVal(form, 'user_phone'), password: fieldVal(form, 'user_password'), user_id: uid('USR') }, { allowQueue: false });
-        form.reset(); await loadUsers(); toast('Akun baru berhasil dibuat. Berikan password awal melalui kanal aman.', 'ok'); render();
+        await apiPost('createUser',{full_name:fieldVal(form,'user_full_name'),username:fieldVal(form,'user_username'),role:fieldVal(form,'user_role'),phone:fieldVal(form,'user_phone'),password:fieldVal(form,'user_password'),user_id:uid('USR')},{allowQueue:false});
+        form.reset(); await loadUsers(); toast('Akun baru berhasil dibuat. Berikan password awal melalui kanal aman.','ok'); render();
       } else if (type === 'nooOutlet') {
         const outletId = uid('OUT');
         const newOutlet = {
@@ -1994,13 +2063,13 @@
         toast('Outlet NOO ' + newOutlet.outlet_name + ' berhasil didaftarkan! Melanjutkan ke survey...', 'ok');
         render();
       } else if (type === 'createOutlet') {
-        await apiPost('createOutlet', { outlet_id: uid('OUT'), outlet_name: fieldVal(form, 'new_outlet_name'), city: fieldVal(form, 'new_outlet_city'), area: fieldVal(form, 'new_outlet_area'), address: fieldVal(form, 'new_outlet_address'), type: fieldVal(form, 'new_outlet_type'), segment_final: fieldVal(form, 'new_outlet_segment'), priority: fieldVal(form, 'new_outlet_priority'), contact_name: fieldVal(form, 'new_outlet_contact'), contact_phone: fieldVal(form, 'new_outlet_phone') }, { allowQueue: false });
-        await refreshAll(false); state.page = 'outlets'; toast('Outlet berhasil ditambahkan.', 'ok'); render();
+        await apiPost('createOutlet',{outlet_id:uid('OUT'),outlet_name:fieldVal(form,'new_outlet_name'),city:fieldVal(form,'new_outlet_city'),area:fieldVal(form,'new_outlet_area'),address:fieldVal(form,'new_outlet_address'),type:fieldVal(form,'new_outlet_type'),segment_final:fieldVal(form,'new_outlet_segment'),priority:fieldVal(form,'new_outlet_priority'),contact_name:fieldVal(form,'new_outlet_contact'),contact_phone:fieldVal(form,'new_outlet_phone')},{allowQueue:false});
+        await refreshAll(false); state.page='outlets'; toast('Outlet berhasil ditambahkan.','ok'); render();
       } else if (type === 'beatPlan') {
         const checked = Array.from(form.querySelectorAll('input[name="beat_outlet_ids"]:checked')).map((c) => c.value);
         if (!checked.length) throw new Error('Pilih minimal 1 outlet (maksimal 20 outlet sekaligus).');
         if (checked.length > 20) throw new Error('Maksimal 20 outlet per penugasan rute sekaligus. Anda memilih ' + checked.length + ' outlet.');
-
+        
         await apiPost('saveBeatPlan', {
           date: fieldVal(form, 'beat_date'),
           week: fieldVal(form, 'beat_week'),
@@ -2011,14 +2080,26 @@
           status: 'PLANNED',
           planned: true
         }, { allowQueue: false });
-
+        
         form.reset();
         await loadBeatPlan();
         toast('Berhasil menetapkan ' + checked.length + ' outlet untuk rencana kunjungan FM!', 'ok');
         render();
       }
-    } catch (error) { showError(error); }
-    finally { setBusy(form, false); }
+    } catch (error) {
+      if (form.isConnected) {
+        const feedback = document.createElement('p');
+        feedback.className = 'form-feedback notice error';
+        feedback.setAttribute('role', 'alert');
+        feedback.textContent = error.message || 'Terjadi kesalahan.';
+        const actions = form.querySelector('.form-actions');
+        if (actions) actions.before(feedback);
+        else form.append(feedback);
+        if (form.dataset.form !== 'login') showError(error);
+      } else showError(error);
+    } finally {
+      setBusy(form, false);
+    }
   }
 
   async function loadOutlets() {
@@ -2027,7 +2108,7 @@
     }
     const cached = await metaGet('outlets'); if (cached) state.outletList = cached;
   }
-  async function loadReports() { if (!navigator.onLine) { state.reports = await metaGet('reports') || state.reports; return; } const result = await apiGet('reports', { limit: 100 }); state.reports = result; await metaPut('reports', result); }
+  async function loadReports() { if (!navigator.onLine) { state.reports = await metaGet('reports') || state.reports; return; } const result = await apiGet('reports',{limit:100}); state.reports = result; await metaPut('reports', result); }
   async function loadUsers() { if (!navigator.onLine) { state.users = await metaGet('users') || state.users; return; } const result = await apiGet(state.user.role === 'ADMIN' ? 'users' : 'team'); state.users = result.items || []; await metaPut('users', state.users); }
   async function loadBeatPlan() { if (!navigator.onLine) { state.beatPlan = await metaGet('beatPlan') || state.beatPlan; return; } const result = await apiGet('beatPlan'); state.beatPlan = result.items || []; await metaPut('beatPlan', state.beatPlan); }
   function selectOutlet(id) {
@@ -2042,58 +2123,63 @@
     if (state.user.role === 'SPG' && !state.inputType) toast('Outlet belum qualified. SPG hanya dapat aktivasi di outlet qualified.', 'bad');
     render();
   }
-  function closeModal() {
-    const existing = document.getElementById('trw-modal-backdrop');
-    if (existing) existing.remove();
-  }
-  function openModal(title, bodyHtml, onSubmit) {
-    closeModal();
-    const wrap = document.createElement('div');
-    wrap.id = 'trw-modal-backdrop';
-    wrap.className = 'modal-backdrop';
-    wrap.setAttribute('role', 'dialog');
-    wrap.setAttribute('aria-modal', 'true');
-    wrap.innerHTML = '<div class="modal">' +
-      '<div class="modal-head"><h3>' + esc(title) + '</h3><button type="button" class="close-btn" data-act="close-modal" aria-label="Tutup dialog">&times;</button></div>' +
-      bodyHtml +
-      '</div>';
-    wrap.addEventListener('click', (e) => { if (e.target === wrap) closeModal(); });
-    document.body.appendChild(wrap);
-    const form = wrap.querySelector('form');
-    if (form && typeof onSubmit === 'function') {
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        setBusy(form, true, 'Memproses…');
-        try {
-          await onSubmit(form);
-          closeModal();
-        } catch (err) {
-          showError(err);
-        } finally {
-          setBusy(form, false);
-        }
+  function showDialog(title, content, actionLabel) {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'modal';
+    dialog.setAttribute('aria-labelledby', 'dialog-title');
+    dialog.innerHTML = '<h2 id="dialog-title">' + esc(title) + '</h2><form method="dialog">' + content +
+      '<div class="form-actions"><button type="button" class="btn btn-plain" value="cancel">Batal</button>' +
+      '<button type="submit" class="btn btn-primary" value="confirm">' + esc(actionLabel) + '</button></div></form>';
+    const form = dialog.querySelector('form');
+    const cancel = form.querySelector('[value="cancel"]');
+    (form.querySelector('input') || cancel).autofocus = true;
+    document.body.append(dialog);
+    return new Promise((resolve) => {
+      const finish = (result) => {
+        dialog.close();
+        dialog.remove();
+        resolve(result);
+      };
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        finish(new FormData(form));
       });
-    }
-    const firstInput = wrap.querySelector('input, select, textarea');
-    if (firstInput) setTimeout(() => firstInput.focus(), 50);
-  }
-  function changePasswordPrompt() {
-    const html = '<form autocomplete="off">' +
-      field('current_password', 'Password saat ini', 'password', { required: true, full: true }) +
-      field('new_password', 'Password baru', 'password', { required: true, hint: 'Minimal 8 karakter.', full: true }) +
-      field('confirm_password', 'Ulangi password baru', 'password', { required: true, full: true }) +
-      '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="close-modal">Batal</button><button type="submit" class="btn btn-primary">Simpan Password</button></div>' +
-      '</form>';
-    openModal('Ganti Password', html, async (form) => {
-      const oldPw = fieldVal(form, 'current_password');
-      const nextPw = fieldVal(form, 'new_password');
-      const confirmPw = fieldVal(form, 'confirm_password');
-      if (nextPw.length < 8) throw new Error('Password baru minimal 8 karakter.');
-      if (nextPw !== confirmPw) throw new Error('Konfirmasi password tidak sama.');
-      await apiPost('changePassword', { current_password: oldPw, new_password: nextPw }, { allowQueue: false });
-      toast('Password berhasil diganti.', 'ok');
+      cancel.addEventListener('click', () => finish(null));
+      dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        finish(null);
+      });
+      dialog.showModal();
     });
   }
+
+  async function changePasswordPrompt() {
+    const result = await showDialog('Ganti password',
+      field('current_password', 'Password saat ini', 'password', { required: true, autocomplete: 'current-password' }) +
+      field('new_password', 'Password baru', 'password', { required: true, minLength: 8, autocomplete: 'new-password', hint: 'Minimal 8 karakter.' }) +
+      field('confirm_password', 'Ulangi password baru', 'password', { required: true, autocomplete: 'new-password' }), 'Simpan password');
+    if (!result) return;
+    const next = result.get('new_password');
+    if (next !== result.get('confirm_password')) {
+      toast('Konfirmasi password tidak sama.', 'bad');
+      return;
+    }
+    await apiPost('changePassword', { current_password: result.get('current_password'), new_password: next }, { allowQueue: false });
+    toast('Password berhasil diganti.', 'ok');
+  }
+
+  function confirmAction(title, message, action) {
+    return showDialog(title, '<p class="muted">' + esc(message) + '</p>', action);
+  }
+
+  function setMultiSelectOpen(trigger, open) {
+    const menu = document.getElementById(trigger.getAttribute('aria-controls'));
+    if (!menu) return;
+    menu.style.display = open ? 'flex' : 'none';
+    trigger.classList.toggle('is-active', open);
+    trigger.setAttribute('aria-expanded', String(open));
+  }
+
   async function loadCurrentPageData() {
     try {
       if (state.page === 'outlets') await loadOutlets();
@@ -2115,52 +2201,46 @@
         // Navigation must never wait for the network. Paint the requested page first,
         // then refresh only the data that page needs in the background.
         render();
-        loadCurrentPageData().then(() => render()).catch((error) => {
-          if (navigator.onLine) toast(error.message || 'Data tidak berhasil dimuat.', 'bad');
-          render();
-        });
+        const destination = state.page;
+        if (destination === 'createOutlet') loadCurrentPageData();
+        if (['outlets', 'reports', 'users', 'beatplan'].includes(destination)) {
+          const currentView = $('.wrap');
+          loadCurrentPageData().then(() => {
+            if (state.page === destination && currentView?.isConnected &&
+                (!currentView.contains(document.activeElement) || document.activeElement === $('h1', currentView)) &&
+                !currentView.querySelector('form[data-edited]')) render();
+          });
+        }
       }
       else if (act === 'toggle-sidebar') {
         state.sidebarCollapsed = !state.sidebarCollapsed;
         localStorage.setItem('trw_sidebar_collapsed', state.sidebarCollapsed ? '1' : '0');
-        render();
+        updateNavigation();
+        currentLeafletMap?.invalidateSize();
       }
-      else if (act === 'open-drawer') {
-        state.drawerOpen = true;
-        render();
+      else if (act === 'toggle-drawer') {
+        setDrawer(!state.drawerOpen);
       }
       else if (act === 'close-drawer') {
-        state.drawerOpen = false;
-        render();
-      }
-      else if (act === 'close-modal') {
-        closeModal();
+        setDrawer(false);
       }
       else if (act === 'refresh') await refreshAll(true);
-      else if (act === 'refresh-reports') { await loadReports(); render(); toast('Laporan diperbarui.', 'ok'); }
+      else if (act === 'refresh-reports') { await loadReports(); render(); toast('Laporan diperbarui.','ok'); }
       else if (act === 'refresh-users') { await loadUsers(); render(); }
       else if (act === 'toggle-ms') {
-        const targetId = button.dataset.target;
-        const menu = document.getElementById('menu-' + targetId);
-        const trigger = document.getElementById('trigger-' + targetId);
-        if (!menu || !trigger) return;
-        const isOpen = menu.style.display !== 'none';
-        // Close all menus first
-        document.querySelectorAll('.ms-menu').forEach(m => m.style.display = 'none');
-        document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('is-active'));
-        if (!isOpen) {
-          menu.style.display = 'flex';
-          trigger.classList.add('is-active');
-          const searchInp = menu.querySelector('.ms-search-input');
-          if (searchInp) setTimeout(() => searchInp.focus(), 60);
+        const open = button.getAttribute('aria-expanded') !== 'true';
+        $$('.ms-trigger[aria-expanded="true"]').forEach((trigger) => setMultiSelectOpen(trigger, false));
+        if (open) {
+          setMultiSelectOpen(button, true);
+          if (event.detail === 0) $('#menu-' + button.dataset.target + ' input')?.focus();
         }
       }
       else if (act === 'close-ms') {
-        const targetId = button.dataset.target;
-        const menu = document.getElementById('menu-' + targetId);
-        const trigger = document.getElementById('trigger-' + targetId);
-        if (menu) menu.style.display = 'none';
-        if (trigger) trigger.classList.remove('is-active');
+        const trigger = $('#trigger-' + button.dataset.target);
+        if (trigger) {
+          setMultiSelectOpen(trigger, false);
+          trigger.focus();
+        }
       }
       else if (act === 'ms-clear') {
         const targetId = button.dataset.target;
@@ -2177,7 +2257,7 @@
         container.querySelectorAll('.ms-item-row').forEach(row => {
           if (row.style.display !== 'none') {
             const cb = row.querySelector('input[type="checkbox"]');
-            if (cb && cb.value !== 'Tidak ada' && cb.value !== 'Belum diketahui' && cb.value !== 'Tidak Pernah Menjual') cb.checked = true;
+            if (cb && cb.value !== 'Tidak ada' && cb.value !== 'Belum diketahui') cb.checked = true;
           }
         });
         const form = container.closest('form');
@@ -2228,11 +2308,12 @@
       else if (act === 'sync') await syncQueue();
       else if (act === 'logout') {
         const open = state.openAttendance;
-        if (open && !confirm('Anda masih Check In. Logout tidak melakukan Check Out. Tetap logout?')) return;
-        try { await apiGet('logout').catch(() => apiPost('logout', {}, { allowQueue: false })); } catch (_) { }
-        signOutLocal(); toast('Logout aplikasi berhasil.', 'ok');
+        if (open && !await confirmAction('Keluar dari aplikasi?', 'Kehadiran Anda tetap aktif sampai Anda melakukan Check Out.', 'Keluar')) return;
+        try { await apiGet('logout').catch(() => apiPost('logout',{}, {allowQueue:false})); } catch (_) {}
+        signOutLocal(); toast('Logout aplikasi berhasil.','ok');
       }
       else if (act === 'search-outlets') {
+        event.preventDefault();
         state.outletQuery = $('#outlet-search') ? $('#outlet-search').value : '';
         render();
         if (navigator.onLine) {
@@ -2245,14 +2326,15 @@
         initDashboardMap();
         const chips = document.querySelectorAll('[data-act="map-filter"]');
         chips.forEach((c) => {
-          if (c.dataset.filter === currentMapFilter) c.classList.add('active');
-          else c.classList.remove('active');
+          const active = c.dataset.filter === currentMapFilter;
+          c.classList.toggle('active', active);
+          c.setAttribute('aria-pressed', String(active));
         });
       }
       else if (act === 'choose-outlet') selectOutlet(button.dataset.id);
       else if (act === 'start-noo') {
         if (!state.openAttendance) {
-          if (!confirm('Untuk mendaftarkan outlet baru (NOO), Anda wajib melakukan Check In kehadiran dengan foto dan GPS di lokasi outlet terlebih dahulu.\n\nLanjutkan Check In sekarang?')) return;
+          if (!await confirmAction('Check In di outlet baru', 'Pendaftaran outlet baru (NOO) membutuhkan foto dan GPS di lokasi outlet.', 'Lanjut Check In')) return;
           await attendanceAction('checkin', { isNoo: true });
           if (state.openAttendance) {
             state.page = 'nooForm';
@@ -2284,38 +2366,73 @@
         state.selectedOutlet = state.outletList.find((outlet) => String(outlet.outlet_id) === String(id)) || (state.fmRoute && state.fmRoute.items || []).find((item) => String(item.outlet_id) === String(id)) || null;
         state.page = 'input'; state.inputType = ''; render();
       }
-      else if (act === 'clear-signature') { state.signatureData = ''; state.signatureDrawn = false; state.signatureCapturedAt = ''; const canvas = $('#owner-signature'); if (canvas) { const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height); } const status = $('#signature-status'); if (status) status.textContent = 'Belum ditandatangani.'; }
-      else if (act === 'clear-outlet') { state.selectedOutlet = null; state.inputType = ''; state.visitFlow = null; state.activationFlow = null; state.photos = {}; state.signatureData = ''; state.signatureDrawn = false; state.signatureCapturedAt = ''; state.lastActivationId = ''; state.page = 'outlets'; render(); }
-      else if (act === 'start-input') { state.inputType = state.user.role === 'SPG' ? 'activation' : 'visit'; state.page = 'input'; render(); }
-      else if (act === 'select-form') { state.inputType = button.dataset.formType || ''; state.page = 'input'; render(); }
-      else if (act === 'report-tab') { state.periodTab = button.dataset.tab; render(); }
-      else if (act === 'report-list-tab') { state.reportTab = button.dataset.tab; render(); }
+      else if (act === 'clear-signature') { state.signatureData=''; state.signatureDrawn=false; state.signatureCapturedAt=''; const canvas=$('#owner-signature'); if(canvas){const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);} const status=$('#signature-status'); if(status) status.textContent='Belum ditandatangani.'; }
+      else if (act === 'clear-outlet') { state.selectedOutlet=null; state.inputType=''; state.visitFlow=null; state.activationFlow=null; state.photos={}; state.signatureData=''; state.signatureDrawn=false; state.signatureCapturedAt=''; state.lastActivationId=''; state.page='outlets'; render(); }
+      else if (act === 'start-input') { state.inputType = state.user.role === 'SPG' ? 'activation' : 'visit'; state.page='input'; render(); }
+      else if (act === 'select-form') { state.inputType = button.dataset.formType || ''; state.page='input'; render(); }
+      else if (act === 'report-tab') { state.periodTab=button.dataset.tab; render(); }
+      else if (act === 'report-list-tab') { state.reportTab=button.dataset.tab; render(); }
       else if (act === 'export-summary') exportSummary(button.dataset.period || 'daily');
       else if (act === 'export-records') await exportRecords();
-      else if (act === 'change-password') changePasswordPrompt();
-      else if (act === 'toggle-user') { const active = button.dataset.active === 'true'; if (!confirm((active ? 'Aktifkan' : 'Nonaktifkan') + ' akun ini?')) return; await apiPost('setUserActive', { user_id: button.dataset.id, active: active }, { allowQueue: false }); await loadUsers(); render(); toast('Status akun diperbarui.', 'ok'); }
+      else if (act === 'change-password') await changePasswordPrompt();
+      else if (act === 'toggle-user') {
+        const active = button.dataset.active === 'true';
+        const action = active ? 'Aktifkan' : 'Nonaktifkan';
+        if (!await confirmAction(action + ' akun ini?', button.closest('tr').querySelector('strong').textContent, action)) return;
+        await apiPost('setUserActive', { user_id: button.dataset.id, active }, { allowQueue: false });
+        await loadUsers();
+        render();
+        toast('Status akun diperbarui.', 'ok');
+      }
       else if (act === 'reset-password') {
-        const targetUid = button.dataset.id;
-        openModal('Reset Password User', '<form autocomplete="off">' + field('reset_pw', 'Password baru', 'password', { required: true, hint: 'Minimal 8 karakter. Berikan melalui kanal aman.', full: true }) + '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="close-modal">Batal</button><button type="submit" class="btn btn-yellow">Reset Password</button></div></form>', async (form) => {
-          const pw = fieldVal(form, 'reset_pw');
-          if (pw.length < 8) throw new Error('Password minimal 8 karakter.');
-          await apiPost('resetUserPassword', { user_id: targetUid, new_password: pw }, { allowQueue: false });
-          toast('Password direset. Berikan melalui kanal aman.', 'ok');
-        });
+        const result = await showDialog('Reset password', field('reset_password', 'Password baru', 'password', {
+          required: true, minLength: 8, autocomplete: 'new-password', hint: 'Minimal 8 karakter.'
+        }), 'Reset password');
+        if (!result) return;
+        await apiPost('resetUserPassword', { user_id: button.dataset.id, new_password: result.get('reset_password') }, { allowQueue: false });
+        toast('Password direset. Berikan melalui kanal aman.', 'ok');
       }
     } catch (error) { showError(error); }
   });
 
-  // Close multi-select menus on click outside
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.ms-dropdown-container')) {
-      document.querySelectorAll('.ms-menu').forEach(m => m.style.display = 'none');
-      document.querySelectorAll('.ms-trigger').forEach(t => t.classList.remove('is-active'));
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.ms-dropdown-container')) {
+      $$('.ms-trigger[aria-expanded="true"]').forEach((trigger) => setMultiSelectOpen(trigger, false));
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Tab' && state.drawerOpen && tabletNavigation.matches && !$('.modal[open]')) {
+      const buttons = $$('.app-sidebar button:not(:disabled)').filter((button) => button.getClientRects().length);
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    if (event.key !== 'Escape' || $('.modal[open]')) return;
+    if (state.drawerOpen && tabletNavigation.matches) {
+      setDrawer(false);
+      return;
+    }
+    const trigger = $('.ms-trigger[aria-expanded="true"]');
+    if (trigger) {
+      setMultiSelectOpen(trigger, false);
+      trigger.focus();
     }
   });
 
   // Filter multi-select search input
   document.addEventListener('input', (e) => {
+    const form = e.target.closest('form[data-form]');
+    if (form) {
+      form.dataset.edited = 'true';
+      form.querySelector('.form-feedback')?.remove();
+    }
     if (e.target && e.target.classList.contains('ms-search-input')) {
       const targetId = e.target.dataset.msSearch;
       const list = document.getElementById('list-' + targetId);
@@ -2345,19 +2462,19 @@
     if (input && input.dataset && input.dataset.photo) {
       const key = input.dataset.photo; const preview = $('[data-preview-for="' + key + '"]');
       try {
-        if (!input.files || !input.files[0]) { delete state.photos[key]; if (preview) preview.innerHTML = ''; return; }
+        if (!input.files || !input.files[0]) { delete state.photos[key]; if (preview) preview.innerHTML=''; return; }
         if (preview) preview.innerHTML = '<div class="photo-meta">Mengompres foto…</div>';
         const photo = await compressPhoto(input.files[0]); state.photos[key] = photo;
         if (preview) preview.innerHTML = '<img class="photo-preview" alt="Pratinjau ' + esc(key) + '" src="' + photo.dataUrl + '"><div class="photo-meta">Foto siap · ' + Math.round(photo.dataUrl.length * .75 / 1024) + ' KB</div>';
-      } catch (error) { delete state.photos[key]; if (preview) preview.innerHTML = ''; showError(error); }
+      } catch (error) { delete state.photos[key]; if (preview) preview.innerHTML=''; showError(error); }
     }
   });
   window.addEventListener('online', async () => { state.online = true; updateNetworkBadge(); if (state.token) { await updateQueueState(); if (state.queueCount) { toast('Koneksi kembali. Sinkronisasi antrean dimulai…', 'ok'); await syncQueue(); } else toast('Koneksi kembali. Semua data sudah tersinkron.', 'ok'); } });
   window.addEventListener('offline', () => { state.online = false; updateNetworkBadge(); toast('Offline. Data lapangan yang didukung akan disimpan di perangkat.'); });
 
   async function init() {
-    if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(() => { });
-    try { await updateQueueState(); } catch (_) { }
+    if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(() => {});
+    try { await updateQueueState(); } catch (_) {}
     if (state.token && state.user) {
       if (state.user.role === 'FM') startFmLocationTracking();
       try { await refreshAll(false); }
