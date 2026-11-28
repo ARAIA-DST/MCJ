@@ -1233,7 +1233,7 @@
     return pageHead('Daftarkan Outlet Baru', 'Setelah tersimpan, sistem akan langsung membuka Form Kunjungan & Survey Outlet.') +
       '<form data-form="nooOutlet" class="card">' +
         '<div class="notice success">' +
-          '<strong>Check In Aktif:</strong> Lokasi GPS & foto kehadiran Anda sudah tercatat. Silakan lengkapi profil outlet di bawah ini.' +
+          '<strong>Check In aktif.</strong> Lokasi dari Check In ini akan disimpan pada outlet baru.' +
         '</div>' +
         '<div class="field-grid">' + content + '</div>' +
         '<div class="form-actions">' +
@@ -1430,7 +1430,7 @@
         section('3','Audit & POSM',posmSection,'Pemasangan, penggantian atau perbaikan POSM wajib melampirkan foto Before & After.') +
         section('4','Edukasi Produk',eduSection,'Sampaikan product knowledge dan program promosi resmi TRW.') +
         section('5','Survey TRW & Market Insight',surveySection,'Petakan ketersediaan stok, harga, pembanding, persepsi dan unmet demand.') +
-        '<div class="notice warning small">Penyimpanan kuesioner memerlukan koneksi internet. Aplikasi mencatat lokasi GPS dan waktu survey saat Anda menyimpan.</div>' +
+        '<div class="notice warning small">Penyimpanan kuesioner memerlukan koneksi internet. GPS yang valid dari survei digunakan untuk memperbarui lokasi outlet.</div>' +
         '<div class="form-actions"><button type="button" class="btn btn-plain" data-act="nav" data-page="home">Batal</button><button type="submit" class="btn btn-primary">Simpan Kuesioner Survey</button></div>' +
       '</form>' 
   }
@@ -1519,7 +1519,7 @@
     const locationNote = role === 'FM'
       ? '<p class="notice">Posisi petugas FM diperbarui berkala selama Anda masuk dan memberi izin lokasi.</p>'
       : '';
-    return pageHead('Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note + locationNote + '<p class="version-note">TRW Field · Versi 1.6.6</p>';
+    return pageHead('Pengaturan & alat', role === 'CLIENT' ? 'Profil akun dan akses laporan program.' : 'Akun, sinkronisasi, serta pengelolaan sistem.') + '<div class="card"><div class="user-panel"><div class="avatar">' + esc((state.user.full_name || state.user.username).slice(0,1).toUpperCase()) + '</div><div class="user-copy"><strong>' + esc(state.user.full_name || state.user.username) + '</strong><small>' + esc(state.user.username) + ' · ' + esc(roleName(role)) + '</small><small>User ID: ' + esc(state.user.user_id) + '</small></div></div><div class="divider"></div><div class="grid">' + cards.join('') + '</div></div>' + note + locationNote + '<p class="version-note">TRW Field · Versi 1.6.8</p>';
   }
 
   function usersPage() {
@@ -2064,7 +2064,13 @@
         await apiPost('createUser',{full_name:fieldVal(form,'user_full_name'),username:fieldVal(form,'user_username'),role:fieldVal(form,'user_role'),phone:fieldVal(form,'user_phone'),password:fieldVal(form,'user_password'),user_id:uid('USR')},{allowQueue:false});
         form.reset(); await loadUsers(); toast('Akun baru berhasil dibuat. Berikan password awal melalui kanal aman.','ok'); render();
       } else if (type === 'nooOutlet') {
-        const outletId = uid('OUT');
+        const attendance = state.openAttendance;
+        if (!attendance?.attendance_id) throw new Error('Lakukan Check In NOO di lokasi outlet sebelum menyimpan.');
+        if (attendance.pending) throw new Error('Sinkronkan Check In NOO sebelum menyimpan outlet.');
+        const token = state.token;
+        const attendanceId = String(attendance.attendance_id);
+        // One outlet per NOO Check In, including retries after a lost response.
+        const outletId = 'OUT-' + attendanceId.replace(/^ATT-/, '');
         const newOutlet = {
           outlet_id: outletId,
           outlet_name: fieldVal(form, 'noo_outlet_name'),
@@ -2085,8 +2091,12 @@
           throw new Error('Mohon lengkapi nama outlet, kota, alamat, dan nama PIC.');
         }
 
-        await apiPost('createOutlet', Object.assign({}, newOutlet, { is_noo: true }), { allowQueue: false });
-        state.outletList.unshift(newOutlet);
+        const saved = await apiPost('createOutlet', {
+          ...newOutlet, attendance_id: attendanceId, request_id: 'REQ-NOO-' + attendanceId
+        }, { allowQueue: false });
+        if (state.token !== token || state.openAttendance?.attendance_id !== attendance.attendance_id) return;
+        Object.assign(newOutlet, saved.outlet || { lat: saved.lat, lng: saved.lng, gps_accuracy: saved.gps_accuracy });
+        state.outletList = [newOutlet, ...state.outletList.filter((outlet) => String(outlet.outlet_id) !== outletId)];
         await metaPut('outlets', state.outletList);
 
         if (state.openAttendance) {
@@ -2096,7 +2106,7 @@
         }
 
         if (state.fmRoute) {
-          state.fmRoute.items = state.fmRoute.items || [];
+          state.fmRoute.items = (state.fmRoute.items || []).filter((outlet) => String(outlet.outlet_id) !== outletId);
           state.fmRoute.items.unshift({
             outlet_id: outletId,
             outlet_name: newOutlet.outlet_name,
@@ -2399,6 +2409,10 @@
       }
       else if (act === 'choose-outlet') selectOutlet(button.dataset.id);
       else if (act === 'start-noo') {
+        const activeOutlet = state.openAttendance?.outlet_id;
+        if (activeOutlet && activeOutlet !== 'NOO_PENDING') {
+          throw new Error('Selesaikan Check Out outlet aktif, lalu lakukan Check In NOO di lokasi outlet baru.');
+        }
         if (!state.openAttendance) {
           if (!await confirmAction('Check In di outlet baru', 'Pendaftaran outlet baru (NOO) membutuhkan foto dan GPS di lokasi outlet.', 'Lanjut Check In')) return;
           await attendanceAction('checkin', { isNoo: true });
